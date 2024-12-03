@@ -119,10 +119,11 @@ class AutoencoderKLCausal3D(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         self.use_spatial_tiling = False
         self.use_temporal_tiling = False
 
+        self.sample_tsize = sample_tsize
+
         # only relevant if vae tiling is enabled
-        sample_tsize = 16
-        self.tile_sample_min_tsize = sample_tsize
-        self.tile_latent_min_tsize = sample_tsize // time_compression_ratio
+        self.tile_sample_min_tsize = self.sample_tsize
+        self.tile_latent_min_tsize = self.sample_tsize // time_compression_ratio
 
         self.tile_sample_min_size = self.config.sample_size
         sample_size = (

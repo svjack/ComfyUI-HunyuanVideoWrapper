@@ -441,7 +441,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         )
 
         #if "884" in vae_ver:
-        video_length = (video_length - 1) // 4 + 1
+        latent_video_length = (video_length - 1) // 4 + 1
         # elif "888" in vae_ver:
         #     video_length = (video_length - 1) // 8 + 1
         
@@ -453,7 +453,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             num_channels_latents,
             height,
             width,
-            video_length,
+            latent_video_length,
             prompt_embeds.dtype,
             device,
             generator,
@@ -470,7 +470,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
-        # if is_progress_bar:
+        
+        logger.info(f"Sampling {video_length} frames in {latents.shape[1]} latents at {width}x{height} with {num_inference_steps} inference steps")
         comfy_pbar = ProgressBar(num_inference_steps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):

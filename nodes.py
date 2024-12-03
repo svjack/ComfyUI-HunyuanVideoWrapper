@@ -569,7 +569,7 @@ class HyVideoSampler:
                 "hyvid_embeds": ("HYVIDEMBEDS", ),
                 "width": ("INT", {"default": 512, "min": 64, "max": 1024, "step": 16}),
                 "height": ("INT", {"default": 512, "min": 64, "max": 1024, "step": 16}),
-                "num_frames": ("INT", {"default": 49, "min": 1, "max": 1024, "step": 1}),
+                "num_frames": ("INT", {"default": 49, "min": 1, "max": 1024, "step": 4}),
                 "steps": ("INT", {"default": 30, "min": 1}),
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
@@ -629,6 +629,8 @@ class HyVideoSampler:
         #with autocast_context:
         if not model["cpu_offloading"] and model["manual_offloading"]:
             model["pipe"].transformer.to(device)
+
+        
         latents = model["pipe"](
             num_inference_steps=steps,
             height = target_height,
@@ -668,6 +670,7 @@ class HyVideoDecode:
                     "vae": ("VAE",),
                     "samples": ("LATENT",),
                     "enable_vae_tiling": ("BOOLEAN", {"default": True, "tooltip": "Drastically reduces memory use but may introduce seams"}),
+                    "temporal_tiling_sample_size": ("INT", {"default": 16, "min": 4, "max": 256, "tooltip": "Smaller values use less VRAM, model default is 64 which doesn't fit on most GPUs"}),
                     },            
                 }
 
@@ -676,12 +679,13 @@ class HyVideoDecode:
     FUNCTION = "decode"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def decode(self, vae, samples, enable_vae_tiling):
+    def decode(self, vae, samples, enable_vae_tiling, temporal_tiling_sample_size):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         latents = samples["samples"]
         generator = torch.Generator(device=torch.device("cpu"))#.manual_seed(seed)
         vae.to(device)
+        vae.sample_tsize = temporal_tiling_sample_size
         
         
         expand_temporal_dim = False

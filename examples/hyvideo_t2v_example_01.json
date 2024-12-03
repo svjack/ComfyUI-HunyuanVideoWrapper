@@ -1,60 +1,90 @@
 {
-  "last_node_id": 16,
+  "last_node_id": 17,
   "last_link_id": 17,
   "nodes": [
     {
-      "id": 5,
-      "type": "HyVideoDecode",
+      "id": 11,
+      "type": "VHS_VideoCombine",
       "pos": [
-        1225,
-        313
+        1634,
+        75
       ],
       "size": [
-        315,
-        78
+        632.9049682617188,
+        707.0656127929688
       ],
       "flags": {},
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
-          "name": "vae",
-          "type": "VAE",
-          "link": 6
+          "name": "images",
+          "type": "IMAGE",
+          "link": 13
         },
         {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 4
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null,
+          "shape": 7
         }
       ],
       "outputs": [
         {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            13
-          ],
-          "slot_index": 0
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null
         }
       ],
       "properties": {
-        "Node name for S&R": "HyVideoDecode"
+        "Node name for S&R": "VHS_VideoCombine"
       },
-      "widgets_values": [
-        true
-      ]
+      "widgets_values": {
+        "frame_rate": 16,
+        "loop_count": 0,
+        "filename_prefix": "HunyuanVideo",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "HunyuanVideo_00007.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 16
+          },
+          "muted": false
+        }
+      }
     },
     {
-      "id": 7,
-      "type": "HyVideoVAELoader",
+      "id": 1,
+      "type": "HyVideoModelLoader",
       "pos": [
-        1206,
-        71
+        124,
+        105
       ],
       "size": [
-        379.166748046875,
-        82
+        509.7506103515625,
+        178
       ],
       "flags": {},
       "order": 0,
@@ -69,20 +99,24 @@
       ],
       "outputs": [
         {
-          "name": "vae",
-          "type": "VAE",
+          "name": "model",
+          "type": "HYVIDEOMODEL",
           "links": [
-            6
+            2
           ],
           "slot_index": 0
         }
       ],
       "properties": {
-        "Node name for S&R": "HyVideoVAELoader"
+        "Node name for S&R": "HyVideoModelLoader"
       },
       "widgets_values": [
-        "hyvid\\hunyuan_video_vae_bf16.safetensors",
-        "bf16"
+        "hyvideo\\hunyuan_video_720_fp8_e4m3fn.safetensors",
+        "bf16",
+        "fp8_e4m3fn",
+        "offload_device",
+        false,
+        "sageattn_varlen"
       ]
     },
     {
@@ -93,8 +127,8 @@
         428
       ],
       "size": [
-        400,
-        200
+        479.02203369140625,
+        251.63218688964844
       ],
       "flags": {},
       "order": 3,
@@ -167,8 +201,8 @@
       "widgets_values": [
         512,
         320,
-        49,
-        30,
+        81,
+        4,
         4,
         1008437192147815,
         "fixed",
@@ -176,120 +210,47 @@
       ]
     },
     {
-      "id": 11,
-      "type": "VHS_VideoCombine",
+      "id": 5,
+      "type": "HyVideoDecode",
       "pos": [
-        1634,
-        75
+        1225,
+        313
       ],
       "size": [
-        632.9049682617188,
-        707.0656127929688
+        315,
+        102
       ],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 13
-        },
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "meta_batch",
-          "type": "VHS_BatchManager",
-          "link": null,
-          "shape": 7
-        },
         {
           "name": "vae",
           "type": "VAE",
-          "link": null,
-          "shape": 7
+          "link": 6
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 4
         }
       ],
       "outputs": [
         {
-          "name": "Filenames",
-          "type": "VHS_FILENAMES",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VHS_VideoCombine"
-      },
-      "widgets_values": {
-        "frame_rate": 16,
-        "loop_count": 0,
-        "filename_prefix": "HunyuanVideo",
-        "format": "video/h264-mp4",
-        "pix_fmt": "yuv420p",
-        "crf": 19,
-        "save_metadata": true,
-        "pingpong": false,
-        "save_output": false,
-        "videopreview": {
-          "hidden": false,
-          "paused": false,
-          "params": {
-            "filename": "HunyuanVideo_00008.mp4",
-            "subfolder": "",
-            "type": "temp",
-            "format": "video/h264-mp4",
-            "frame_rate": 16
-          },
-          "muted": false
-        }
-      }
-    },
-    {
-      "id": 1,
-      "type": "HyVideoModelLoader",
-      "pos": [
-        124,
-        105
-      ],
-      "size": [
-        509.7506103515625,
-        178
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "compile_args",
-          "type": "COMPILEARGS",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "model",
-          "type": "HYVIDEOMODEL",
+          "name": "images",
+          "type": "IMAGE",
           "links": [
-            2
+            13
           ],
           "slot_index": 0
         }
       ],
       "properties": {
-        "Node name for S&R": "HyVideoModelLoader"
+        "Node name for S&R": "HyVideoDecode"
       },
       "widgets_values": [
-        "hyvideo\\hunyuan_video_720_fp8_e4m3fn.safetensors",
-        "bf16",
-        "fp8_e4m3fn",
-        "offload_device",
-        false,
-        "sageattn_varlen"
+        true,
+        16
       ]
     },
     {
@@ -297,14 +258,14 @@
       "type": "DownloadAndLoadHyVideoTextEncoder",
       "pos": [
         133,
-        407
+        427
       ],
       "size": [
         441,
         106
       ],
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -322,6 +283,46 @@
       "widgets_values": [
         "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
         "openai/clip-vit-large-patch14",
+        "fp16"
+      ]
+    },
+    {
+      "id": 7,
+      "type": "HyVideoVAELoader",
+      "pos": [
+        1183,
+        89
+      ],
+      "size": [
+        379.166748046875,
+        82
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "compile_args",
+          "type": "COMPILEARGS",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoVAELoader"
+      },
+      "widgets_values": [
+        "hyvid\\hunyuan_video_vae_bf16.safetensors",
         "bf16"
       ]
     }
