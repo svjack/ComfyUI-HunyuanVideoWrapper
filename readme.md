@@ -19,3 +19,7 @@ Clip text encoder (has autodownload)
 For now using the original https://huggingface.co/openai/clip-vit-large-patch14, files (only need the .safetensor from the weights) go to:
 
 `ComfyUI/models/clip/clip-vit-large-patch14`
+
+Memory use is entirely dependant on resolution and frame count, don't expect to be able to go very high even on 24GB. 
+
+Good news is that the model can do functional videos even at really low resolutions.
