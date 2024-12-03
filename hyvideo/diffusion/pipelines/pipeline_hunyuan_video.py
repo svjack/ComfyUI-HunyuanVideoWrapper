@@ -180,19 +180,33 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             if accepts:
                 extra_step_kwargs[k] = v
         return extra_step_kwargs
+    
+    def get_timesteps(self, num_inference_steps, strength, device):
+        # get the original timestep using init_timestep
+        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
+
+        t_start = max(num_inference_steps - init_timestep, 0)
+        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
+
+        return timesteps.to(device), num_inference_steps - t_start
 
 
     def prepare_latents(
         self,
         batch_size,
         num_channels_latents,
+        num_inference_steps,
         height,
         width,
         video_length,
         dtype,
         device,
+        timesteps,
         generator,
         latents=None,
+        denoise_strength=1.0,
     ):
         shape = (
             batch_size,
@@ -206,19 +220,30 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         if latents is None:
-            latents = randn_tensor(
-                shape, generator=generator, device=device, dtype=dtype
-            )
+            latents = noise
         else:
             latents = latents.to(device)
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, denoise_strength, device)
+            frames_needed = noise.shape[1]
+            current_frames = latents.shape[1]
+            
+            if frames_needed > current_frames:
+                repeat_factor = frames_needed - current_frames
+                additional_frame = torch.randn((latents.size(0), repeat_factor, latents.size(2), latents.size(3), latents.size(4)), dtype=latents.dtype, device=latents.device)
+                latents = torch.cat((additional_frame, latents), dim=1)
+                self.additional_frames = repeat_factor
+            elif frames_needed < current_frames:
+                latents = latents[:, :frames_needed, :, :, :]
+
+            latents = noise.to(device) *0.5 + latents * 0.5
 
         # Check existence to make it compatible with FlowMatchEulerDiscreteScheduler
         if hasattr(self.scheduler, "init_noise_sigma"):
             # scale the initial noise by the standard deviation required by the scheduler
             latents = latents * self.scheduler.init_noise_sigma
-        return latents
+        return latents, timesteps
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(
@@ -448,16 +473,19 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
         # 5. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
-        latents = self.prepare_latents(
+        latents, timesteps = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
+            num_inference_steps,
             height,
             width,
             latent_video_length,
             prompt_embeds.dtype,
             device,
+            timesteps,
             generator,
             latents,
+            denoise_strength=denoise_strength,
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline

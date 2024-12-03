@@ -402,6 +402,8 @@ class HyVideoTextEncode:
             },
             "optional": {
                 "force_offload": ("BOOLEAN", {"default": True}),
+                "clip_prompt": ("STRING", {"default": "", "multiline": True, "forceInput": True}),
+                "clip_negative_prompt": ("STRING", {"default": "", "multiline": True, "forceInput": True}),
             }
         }
 
@@ -410,7 +412,7 @@ class HyVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, text_encoders, prompt, negative_prompt, force_offload=True):
+    def process(self, text_encoders, prompt, negative_prompt, force_offload=True, clip_prompt=None, clip_negative_prompt=None):
         device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
 
@@ -535,8 +537,17 @@ class HyVideoTextEncode:
             mm.soft_empty_cache()
 
         if text_encoder_2 is not None:
+            if clip_prompt is not None:
+                prompt_2 = clip_prompt
+            else:
+                prompt_2 = prompt
+            if clip_negative_prompt is not None:
+                negative_prompt_2 = clip_negative_prompt
+            else:
+                negative_prompt_2 = negative_prompt
+            
             text_encoder_2.to(device)
-            prompt_embeds_2, negative_prompt_embeds_2, attention_mask_2, negative_attention_mask_2 = encode_prompt(self, prompt, negative_prompt, text_encoder_2)
+            prompt_embeds_2, negative_prompt_embeds_2, attention_mask_2, negative_attention_mask_2 = encode_prompt(self, prompt_2, negative_prompt_2, text_encoder_2)
             if force_offload:
                 text_encoder_2.to(offload_device)
                 mm.soft_empty_cache()
@@ -577,8 +588,8 @@ class HyVideoSampler:
                 
             },
             "optional": {
-                #"samples": ("LATENT", {"tooltip": "init Latents to use for video2video process"} ),
-                #"denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "samples": ("LATENT", {"tooltip": "init Latents to use for video2video process"} ),
+                "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             }
         }
 
@@ -631,14 +642,14 @@ class HyVideoSampler:
             model["pipe"].transformer.to(device)
 
         
-        latents = model["pipe"](
+        out_latents = model["pipe"](
             num_inference_steps=steps,
             height = target_height,
             width = target_width,
             video_length = num_frames,
             guidance_scale=guidance_scale,
             embedded_guidance_scale=guidance_scale,
-            latents=latents if samples is not None else None,
+            latents=samples["samples"] if samples is not None else None,
             denoise_strength=denoise_strength,
             prompt_embed_dict=hyvid_embeds,
             generator=generator,
@@ -658,7 +669,7 @@ class HyVideoSampler:
                 mm.soft_empty_cache()
 
         return ({
-            "samples": latents
+            "samples": out_latents
             },)
 
     
@@ -726,6 +737,41 @@ class HyVideoDecode:
         video = video[0].permute(0, 2, 3, 1).cpu().float()
 
         return (video,)
+    
+class HyVideoEncode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+                    "vae": ("VAE",),
+                    "image": ("IMAGE",),
+                    "enable_vae_tiling": ("BOOLEAN", {"default": True, "tooltip": "Drastically reduces memory use but may introduce seams"}),
+                    "temporal_tiling_sample_size": ("INT", {"default": 16, "min": 4, "max": 256, "tooltip": "Smaller values use less VRAM, model default is 64 which doesn't fit on most GPUs"}),
+                    },            
+                }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("samples",)
+    FUNCTION = "encode"
+    CATEGORY = "HunyuanVideoWrapper"
+
+    def encode(self, vae, image, enable_vae_tiling, temporal_tiling_sample_size):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        
+        generator = torch.Generator(device=torch.device("cpu"))#.manual_seed(seed)
+        vae.to(device)
+        vae.sample_tsize = temporal_tiling_sample_size
+
+        image = (image * 2.0 - 1.0).to(vae.dtype).to(device).unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
+        if enable_vae_tiling:
+            vae.enable_tiling()
+        latents = vae.encode(image).latent_dist.sample(generator)
+        latents = latents * vae.config.scaling_factor
+        vae.to(offload_device)
+        print("encoded latents shape",latents.shape)      
+        
+
+        return ({"samples": latents},)
 
 class CogVideoLatentPreview:
     @classmethod
@@ -795,6 +841,7 @@ NODE_CLASS_MAPPINGS = {
     "HyVideoModelLoader": HyVideoModelLoader,
     "HyVideoVAELoader": HyVideoVAELoader,
     "DownloadAndLoadHyVideoTextEncoder": DownloadAndLoadHyVideoTextEncoder,
+    "HyVideoEncode": HyVideoEncode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoSampler": "HunyuanVideo Sampler",
@@ -803,4 +850,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoModelLoader": "HunyuanVideo Model Loader",
     "HyVideoVAELoader": "HunyuanVideo VAE Loader",
     "DownloadAndLoadHyVideoTextEncoder": "(Down)Load HunyuanVideo TextEncoder",
+    "HyVideoEncode": "HunyuanVideo Encode",
     }
