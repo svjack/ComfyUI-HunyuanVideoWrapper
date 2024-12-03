@@ -597,7 +597,8 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         vec = self.time_in(t)
 
         # text modulation
-        vec = vec + self.vector_in(text_states_2)
+        if text_states_2 is not None:
+            vec = vec + self.vector_in(text_states_2)
 
         # guidance modulation
         if self.guidance_embed:
