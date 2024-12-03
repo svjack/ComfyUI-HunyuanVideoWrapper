@@ -2,6 +2,8 @@
 
 ## WORK IN PROGRESS
 
+**Currently seems to require flash_attn (default) or sageattn, spda is not working**
+
 Transformer and VAE (single files, no autodownload):
 
 https://huggingface.co/Kijai/HunyuanVideo_comfy/tree/main
