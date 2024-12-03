@@ -402,8 +402,6 @@ class HyVideoTextEncode:
             },
             "optional": {
                 "force_offload": ("BOOLEAN", {"default": True}),
-                "clip_prompt": ("STRING", {"default": "", "multiline": True, "forceInput": True}),
-                "clip_negative_prompt": ("STRING", {"default": "", "multiline": True, "forceInput": True}),
             }
         }
 
@@ -412,7 +410,7 @@ class HyVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, text_encoders, prompt, negative_prompt, force_offload=True, clip_prompt=None, clip_negative_prompt=None):
+    def process(self, text_encoders, prompt, negative_prompt, force_offload=True):
         device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
 
@@ -537,17 +535,8 @@ class HyVideoTextEncode:
             mm.soft_empty_cache()
 
         if text_encoder_2 is not None:
-            if clip_prompt is not None:
-                prompt_2 = clip_prompt
-            else:
-                prompt_2 = prompt
-            if clip_negative_prompt is not None:
-                negative_prompt_2 = clip_negative_prompt
-            else:
-                negative_prompt_2 = negative_prompt
-            
             text_encoder_2.to(device)
-            prompt_embeds_2, negative_prompt_embeds_2, attention_mask_2, negative_attention_mask_2 = encode_prompt(self, prompt_2, negative_prompt_2, text_encoder_2)
+            prompt_embeds_2, negative_prompt_embeds_2, attention_mask_2, negative_attention_mask_2 = encode_prompt(self, prompt, negative_prompt, text_encoder_2)
             if force_offload:
                 text_encoder_2.to(offload_device)
                 mm.soft_empty_cache()
