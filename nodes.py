@@ -567,8 +567,8 @@ class HyVideoSampler:
             "required": {
                 "model": ("HYVIDEOMODEL",),
                 "hyvid_embeds": ("HYVIDEMBEDS", ),
-                "width": ("INT", {"default": 512, "min": 64, "max": 1024, "step": 16}),
-                "height": ("INT", {"default": 512, "min": 64, "max": 1024, "step": 16}),
+                "width": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 16}),
+                "height": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 16}),
                 "num_frames": ("INT", {"default": 49, "min": 1, "max": 1024, "step": 4}),
                 "steps": ("INT", {"default": 30, "min": 1}),
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
