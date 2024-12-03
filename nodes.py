@@ -572,6 +572,7 @@ class HyVideoSampler:
                 "num_frames": ("INT", {"default": 49, "min": 1, "max": 1024, "step": 4}),
                 "steps": ("INT", {"default": 30, "min": 1}),
                 "guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
+                "flow_shift": ("FLOAT", {"default": 9.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "force_offload": ("BOOLEAN", {"default": True}),
                 
@@ -587,7 +588,7 @@ class HyVideoSampler:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, model, hyvid_embeds, steps, guidance_scale, seed, width, height, num_frames, samples=None, denoise_strength=1.0, force_offload=True):
+    def process(self, model, hyvid_embeds, flow_shift, steps, guidance_scale, seed, width, height, num_frames, samples=None, denoise_strength=1.0, force_offload=True):
         mm.unload_all_models()
         mm.soft_empty_cache()
 
@@ -622,6 +623,8 @@ class HyVideoSampler:
             model["pipe"].transformer, num_frames, target_height, target_width
         )
         n_tokens = freqs_cos.shape[0]
+
+        model["pipe"].scheduler.shift = flow_shift
   
         # autocast_context = torch.autocast(
         #     mm.get_autocast_device(device), dtype=dtype

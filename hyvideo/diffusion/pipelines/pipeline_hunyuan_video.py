@@ -226,6 +226,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         else:
             latents = latents.to(device)
             timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, denoise_strength, device)
+            latent_timestep = timesteps[:1]
             frames_needed = noise.shape[1]
             current_frames = latents.shape[1]
             
@@ -236,8 +237,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 self.additional_frames = repeat_factor
             elif frames_needed < current_frames:
                 latents = latents[:, :frames_needed, :, :, :]
+            print(timesteps)
 
-            latents = noise.to(device) *0.5 + latents * 0.5
+            latents = latents * (1 - latent_timestep / 1000) + latent_timestep / 1000 * noise
 
         # Check existence to make it compatible with FlowMatchEulerDiscreteScheduler
         if hasattr(self.scheduler, "init_noise_sigma"):
