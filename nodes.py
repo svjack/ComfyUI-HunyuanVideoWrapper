@@ -74,6 +74,24 @@ def get_rotary_pos_embed(transformer, video_length, height, width):
         )
         return freqs_cos, freqs_sin
 
+class HyVideoBlockSwap:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": { 
+                "double_blocks_to_swap": ("INT", {"default": 20, "min": 0, "max": 20, "step": 1, "tooltip": "Number of double blocks to swap"}),
+                "single_blocks_to_swap": ("INT", {"default": 0, "min": 0, "max": 40, "step": 1, "tooltip": "Number of single blocks to swap"}),
+            },
+        }
+    RETURN_TYPES = ("BLOCKSWAPARGS",)
+    RETURN_NAMES = ("block_swap_args",)
+    FUNCTION = "setargs"
+    CATEGORY = "HunyuanVideoWrapper"
+    DESCRIPTION = "Settings for block swapping, reduces VRAM use by swapping blocks to CPU memory"
+
+    def setargs(self, **kwargs):
+        return (kwargs, )
+    
 #region Model loading
 class HyVideoModelLoader:
     @classmethod
@@ -85,7 +103,6 @@ class HyVideoModelLoader:
             "base_precision": (["fp16", "fp32", "bf16"], {"default": "bf16"}),
             "quantization": (['disabled', 'fp8_e4m3fn', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6"], {"default": 'disabled', "tooltip": "optional quantization method"}),
             "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
-            "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
             },
             "optional": {
                 "attention_mode": ([
@@ -94,6 +111,7 @@ class HyVideoModelLoader:
                     "sageattn_varlen",
                     ], {"default": "flash_attn"}),
                 "compile_args": ("COMPILEARGS", ),
+                "block_swap_args": ("BLOCKSWAPARGS", ),
             }
         }
 
@@ -103,7 +121,7 @@ class HyVideoModelLoader:
     CATEGORY = "HunyuanVideoWrapper"
 
     def loadmodel(self, model, base_precision, load_device,  quantization,
-                  compile_args=None, attention_mode="sdpa", enable_sequential_cpu_offload=False):
+                  compile_args=None, attention_mode="sdpa", enable_sequential_cpu_offload=False, block_swap_args=None):
         transformer = None
         manual_offloading = True
         if "sage" in attention_mode:
@@ -124,7 +142,7 @@ class HyVideoModelLoader:
         sd = load_torch_file(model_path, device=transformer_load_device)
 
         in_channels = out_channels = 16
-        factor_kwargs = {"device": device, "dtype": base_dtype}
+        factor_kwargs = {"device": transformer_load_device, "dtype": base_dtype}
         HUNYUAN_VIDEO_CONFIG = {
             "mm_double_blocks_depth": 20,
             "mm_single_blocks_depth": 40,
@@ -139,6 +157,7 @@ class HyVideoModelLoader:
                 in_channels=in_channels,
                 out_channels=out_channels,
                 attention_mode=attention_mode,
+                offload_device=offload_device,
                 **HUNYUAN_VIDEO_CONFIG,
                 **factor_kwargs
             )
@@ -195,9 +214,9 @@ class HyVideoModelLoader:
             log.info(f"Quantized transformer blocks to {quantization}")
             
         scheduler = FlowMatchDiscreteScheduler(
-            shift=9.0, #this is not even used?
-            reverse=True, #has to be true or noise
-            solver="euler", #has to be euler
+            shift=9.0,
+            reverse=True,
+            solver="euler",
         )
         
         pipe = HunyuanVideoPipeline(
@@ -205,19 +224,15 @@ class HyVideoModelLoader:
             scheduler=scheduler,
             progress_bar_config=None
         )
-        if enable_sequential_cpu_offload:
-            pipe.enable_sequential_cpu_offload()
-            manual_offloading = False
-
 
         pipeline = {
             "pipe": pipe,
             "dtype": base_dtype,
             "base_path": model_path,
-            "cpu_offloading": enable_sequential_cpu_offload,
             "model_name": model,
             "manual_offloading": manual_offloading,
             "quantization": "disabled",
+            "block_swap_args": block_swap_args
         }
         return (pipeline,)
     
@@ -630,9 +645,11 @@ class HyVideoSampler:
         #     mm.get_autocast_device(device), dtype=dtype
         # ) if any(q in model["quantization"] for q in ("e4m3fn", "GGUF")) else nullcontext()
         #with autocast_context:
-        if not model["cpu_offloading"] and model["manual_offloading"]:
+        if model["block_swap_args"] is not None:
             model["pipe"].transformer.to(device)
-
+            model["pipe"].transformer.block_swap(20, 0)
+        elif not model["manual_offloading"]:
+            model["pipe"].transformer.to(device)
         
         out_latents = model["pipe"](
             num_inference_steps=steps,
@@ -656,7 +673,7 @@ class HyVideoSampler:
             pass
 
         if force_offload:
-            if not model["cpu_offloading"] and model["manual_offloading"]:
+            if model["manual_offloading"]:
                 model["pipe"].transformer.to(offload_device)
                 mm.soft_empty_cache()
 
@@ -834,6 +851,7 @@ NODE_CLASS_MAPPINGS = {
     "HyVideoVAELoader": HyVideoVAELoader,
     "DownloadAndLoadHyVideoTextEncoder": DownloadAndLoadHyVideoTextEncoder,
     "HyVideoEncode": HyVideoEncode,
+    "HyVideoBlockSwap": HyVideoBlockSwap,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoSampler": "HunyuanVideo Sampler",
@@ -843,4 +861,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoVAELoader": "HunyuanVideo VAE Loader",
     "DownloadAndLoadHyVideoTextEncoder": "(Down)Load HunyuanVideo TextEncoder",
     "HyVideoEncode": "HunyuanVideo Encode",
+    "HyVideoBlockSwap": "HunyuanVideo BlockSwap",
     }

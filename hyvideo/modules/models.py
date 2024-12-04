@@ -16,7 +16,7 @@ from .posemb_layers import apply_rotary_emb
 from .mlp_layers import MLP, MLPEmbedder, FinalLayer
 from .modulate_layers import ModulateDiT, modulate, apply_gate
 from .token_refiner import SingleTokenRefiner
-
+import comfy.model_management as mm
 
 class MMDoubleStreamBlock(nn.Module):
     """
@@ -443,6 +443,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         text_states_dim_2: int = 768,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
+        offload_device: Optional[torch.device] = None,
         attention_mode: str = "flash_attn",
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
@@ -454,6 +455,9 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         self.unpatchify_channels = self.out_channels
         self.guidance_embed = guidance_embed
         self.rope_dim_list = rope_dim_list
+
+        self.main_device = device
+        self.offload_device = offload_device
 
         # Text projection. Default to linear projection.
         # Alternative: TokenRefiner. See more details (LI-DiT): http://arxiv.org/abs/2406.11831
@@ -558,6 +562,22 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
             get_activation_layer("silu"),
             **factory_kwargs,
         )
+        self.double_blocks_to_swap = 0
+        self.single_blocks_to_swap = 0
+
+    # thanks @2kpr for the initial block swap code!
+    def block_swap(self, double_blocks_to_swap, single_blocks_to_swap):
+        print(f"Swapping {double_blocks_to_swap} double blocks and {single_blocks_to_swap} single blocks")
+        self.double_blocks_to_swap = double_blocks_to_swap
+        self.single_blocks_to_swap = single_blocks_to_swap
+        for b, block in enumerate(self.double_blocks):
+            if b < 0 or b > self.double_blocks_to_swap:
+                mm.soft_empty_cache()
+                block.to(self.main_device)
+        for b, block in enumerate(self.single_blocks):
+            if b < 0 or b > self.single_blocks_to_swap:
+                mm.soft_empty_cache()
+                block.to(self.main_device)
 
     def enable_deterministic(self):
         for block in self.double_blocks:
@@ -632,7 +652,10 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
         # --------------------- Pass through DiT blocks ------------------------
-        for _, block in enumerate(self.double_blocks):
+        for b, block in enumerate(self.double_blocks):
+            if b >= 0 and b <= self.double_blocks_to_swap:
+                mm.soft_empty_cache()
+                block.to(self.main_device)
             double_block_args = [
                 img,
                 txt,
@@ -645,11 +668,17 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
             ]
 
             img, txt = block(*double_block_args)
+            if b >= 0 and b <= self.double_blocks_to_swap:
+                mm.soft_empty_cache()
+                block.to(self.offload_device, non_blocking=True)
 
         # Merge txt and img to pass through single stream blocks.
         x = torch.cat((img, txt), 1)
         if len(self.single_blocks) > 0:
-            for _, block in enumerate(self.single_blocks):
+            for b, block in enumerate(self.single_blocks):
+                if b >= 0 and b <= self.single_blocks_to_swap:
+                    mm.soft_empty_cache()
+                    block.to(self.main_device)
                 single_block_args = [
                     x,
                     vec,
@@ -662,6 +691,9 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
                 ]
 
                 x = block(*single_block_args)
+                if b >= 0 and b <= self.single_blocks_to_swap:
+                    mm.soft_empty_cache()
+                    block.to(self.offload_device, non_blocking=True)
 
         img = x[:, :img_seq_len, ...]
 
