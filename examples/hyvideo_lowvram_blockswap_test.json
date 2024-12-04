@@ -203,7 +203,7 @@
         "hyvideo\\hunyuan_video_720_fp8_e4m3fn.safetensors",
         "bf16",
         "fp8_e4m3fn",
-        "main_device",
+        "offload_device",
         "sageattn_varlen"
       ]
     },
