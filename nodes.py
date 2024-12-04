@@ -385,7 +385,6 @@ class DownloadAndLoadHyVideoTextEncoder:
             max_length=77,
             text_encoder_precision=precision,
             tokenizer_type="clipL",
-            reproduce=True,
             logger=log,
             device=device,
         )
@@ -420,8 +419,6 @@ class DownloadAndLoadHyVideoTextEncoder:
             prompt_template=prompt_template,
             prompt_template_video=prompt_template_video,
             hidden_state_skip_layer=2,
-            apply_final_norm=True,
-            reproduce=True,
             logger=log,
             device=device,
         )
