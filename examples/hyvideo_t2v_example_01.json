@@ -1,60 +1,20 @@
 {
-  "last_node_id": 36,
-  "last_link_id": 44,
+  "last_node_id": 40,
+  "last_link_id": 50,
   "nodes": [
-    {
-      "id": 7,
-      "type": "HyVideoVAELoader",
-      "pos": [
-        -295,
-        -284
-      ],
-      "size": [
-        379.166748046875,
-        82
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "compile_args",
-          "type": "COMPILEARGS",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "vae",
-          "type": "VAE",
-          "links": [
-            6
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoVAELoader"
-      },
-      "widgets_values": [
-        "hyvid\\hunyuan_video_vae_bf16.safetensors",
-        "fp16"
-      ]
-    },
     {
       "id": 1,
       "type": "HyVideoModelLoader",
       "pos": [
-        -314,
-        -76
+        -285,
+        -94
       ],
       "size": [
-        509.7506103515625,
-        178
+        426.1773986816406,
+        174
       ],
       "flags": {},
-      "order": 1,
+      "order": 0,
       "mode": 0,
       "inputs": [
         {
@@ -87,80 +47,8 @@
         "hyvideo\\hunyuan_video_720_fp8_e4m3fn.safetensors",
         "bf16",
         "fp8_e4m3fn",
-        "main_device",
+        "offload_device",
         "sageattn_varlen"
-      ]
-    },
-    {
-      "id": 16,
-      "type": "DownloadAndLoadHyVideoTextEncoder",
-      "pos": [
-        -312,
-        243
-      ],
-      "size": [
-        441,
-        106
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "hyvid_text_encoder",
-          "type": "HYVIDTEXTENCODER",
-          "links": [
-            35
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DownloadAndLoadHyVideoTextEncoder"
-      },
-      "widgets_values": [
-        "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
-        "openai/clip-vit-large-patch14",
-        "fp16"
-      ]
-    },
-    {
-      "id": 30,
-      "type": "HyVideoTextEncode",
-      "pos": [
-        179,
-        242
-      ],
-      "size": [
-        407.9995422363281,
-        292.218505859375
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text_encoders",
-          "type": "HYVIDTEXTENCODER",
-          "link": 35
-        }
-      ],
-      "outputs": [
-        {
-          "name": "hyvid_embeds",
-          "type": "HYVIDEMBEDS",
-          "links": [
-            36
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoTextEncode"
-      },
-      "widgets_values": [
-        "high quality nature video of a red panda balancing on a bamboo stick while a bird lands on the panda's head, there's a waterfall in the background",
-        "bad quality video",
-        true
       ]
     },
     {
@@ -211,58 +99,125 @@
       "widgets_values": [
         512,
         320,
-        69,
+        85,
         30,
-        2.5,
+        6,
         9,
-        3,
+        6,
         "fixed",
         1,
         1
       ]
     },
     {
-      "id": 5,
-      "type": "HyVideoDecode",
+      "id": 7,
+      "type": "HyVideoVAELoader",
       "pos": [
-        651,
-        -285
+        -277,
+        -284
       ],
       "size": [
-        345.4285888671875,
-        102
+        379.166748046875,
+        82
       ],
       "flags": {},
-      "order": 5,
+      "order": 1,
       "mode": 0,
       "inputs": [
         {
-          "name": "vae",
-          "type": "VAE",
-          "link": 6
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 4
+          "name": "compile_args",
+          "type": "COMPILEARGS",
+          "link": null,
+          "shape": 7
         }
       ],
       "outputs": [
         {
-          "name": "images",
-          "type": "IMAGE",
+          "name": "vae",
+          "type": "VAE",
           "links": [
-            42
+            6
           ],
           "slot_index": 0
         }
       ],
       "properties": {
-        "Node name for S&R": "HyVideoDecode"
+        "Node name for S&R": "HyVideoVAELoader"
       },
       "widgets_values": [
-        true,
-        16
+        "hyvid\\hunyuan_video_vae_bf16.safetensors",
+        "fp16"
+      ]
+    },
+    {
+      "id": 16,
+      "type": "DownloadAndLoadHyVideoTextEncoder",
+      "pos": [
+        -312,
+        243
+      ],
+      "size": [
+        441,
+        106
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "hyvid_text_encoder",
+          "type": "HYVIDTEXTENCODER",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadHyVideoTextEncoder"
+      },
+      "widgets_values": [
+        "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
+        "openai/clip-vit-large-patch14",
+        "fp16"
+      ]
+    },
+    {
+      "id": 30,
+      "type": "HyVideoTextEncode",
+      "pos": [
+        179,
+        242
+      ],
+      "size": [
+        408.91546630859375,
+        172.84060668945312
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text_encoders",
+          "type": "HYVIDTEXTENCODER",
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "hyvid_embeds",
+          "type": "HYVIDEMBEDS",
+          "links": [
+            36
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoTextEncode"
+      },
+      "widgets_values": [
+        "high quality nature video of a red panda balancing on a bamboo stick while a bird lands on the panda's head, there's a waterfall in the background",
+        "bad quality video"
       ]
     },
     {
@@ -274,7 +229,7 @@
       ],
       "size": [
         580.7774658203125,
-        674.4859008789062
+        310
       ],
       "flags": {},
       "order": 6,
@@ -328,7 +283,7 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "HunyuanVideo_00063.mp4",
+            "filename": "HunyuanVideo_00009.mp4",
             "subfolder": "",
             "type": "temp",
             "format": "video/h264-mp4",
@@ -337,6 +292,50 @@
           "muted": false
         }
       }
+    },
+    {
+      "id": 5,
+      "type": "HyVideoDecode",
+      "pos": [
+        651,
+        -285
+      ],
+      "size": [
+        345.4285888671875,
+        102
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            42
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoDecode"
+      },
+      "widgets_values": [
+        true,
+        8
+      ]
     }
   ],
   "links": [
@@ -395,8 +394,8 @@
     "ds": {
       "scale": 0.9090909090909091,
       "offset": [
-        684.9559445183311,
-        483.7428286365211
+        691.8119664395365,
+        548.1767085059671
       ]
     }
   },

@@ -37,8 +37,7 @@
       },
       "widgets_values": [
         "high quality anime style movie featuring a wolf in a forest",
-        "bad quality video",
-        true
+        "bad quality video"
       ]
     },
     {
@@ -72,50 +71,6 @@
         "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
         "openai/clip-vit-large-patch14",
         "fp16"
-      ]
-    },
-    {
-      "id": 5,
-      "type": "HyVideoDecode",
-      "pos": [
-        920,
-        -279
-      ],
-      "size": [
-        345.4285888671875,
-        102
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 6
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 4
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            42
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoDecode"
-      },
-      "widgets_values": [
-        true,
-        16
       ]
     },
     {
@@ -248,7 +203,7 @@
       ],
       "size": [
         371.7926940917969,
-        675.792724609375
+        310
       ],
       "flags": {},
       "order": 7,
@@ -313,6 +268,50 @@
       }
     },
     {
+      "id": 5,
+      "type": "HyVideoDecode",
+      "pos": [
+        920,
+        -279
+      ],
+      "size": [
+        345.4285888671875,
+        102
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            42
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoDecode"
+      },
+      "widgets_values": [
+        true,
+        8
+      ]
+    },
+    {
       "id": 3,
       "type": "HyVideoSampler",
       "pos": [
@@ -362,7 +361,7 @@
         512,
         33,
         20,
-        2.5,
+        6,
         9,
         2,
         "fixed",
@@ -435,8 +434,8 @@
     "ds": {
       "scale": 0.9090909090909091,
       "offset": [
-        488.63705586672444,
-        501.29751842889374
+        799.6119664395361,
+        503.44341993174794
       ]
     }
   },
