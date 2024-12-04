@@ -647,7 +647,7 @@ class HyVideoSampler:
         #with autocast_context:
         if model["block_swap_args"] is not None:
             model["pipe"].transformer.to(device)
-            model["pipe"].transformer.block_swap(20, 0)
+            model["pipe"].transformer.block_swap(model["block_swap_args"]["double_blocks_to_swap"] , model["block_swap_args"]["single_blocks_to_swap"])
         elif model["manual_offloading"]:
             model["pipe"].transformer.to(device)
         
