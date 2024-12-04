@@ -501,7 +501,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         
-        logger.info(f"Sampling {video_length} frames in {latents.shape[1]} latents at {width}x{height} with {num_inference_steps} inference steps")
+        logger.info(f"Sampling {video_length} frames in {latents.shape[2]} latents at {width}x{height} with {num_inference_steps} inference steps")
         comfy_pbar = ProgressBar(num_inference_steps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
