@@ -101,7 +101,7 @@ class HyVideoModelLoader:
                 "model": (folder_paths.get_filename_list("diffusion_models"), {"tooltip": "These models are loaded from the 'ComfyUI/models/diffusion_models' -folder",}),
             
             "base_precision": (["fp16", "fp32", "bf16"], {"default": "bf16"}),
-            "quantization": (['disabled', 'fp8_e4m3fn', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6"], {"default": 'disabled', "tooltip": "optional quantization method"}),
+            "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6"], {"default": 'disabled', "tooltip": "optional quantization method"}),
             "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
             },
             "optional": {
@@ -121,7 +121,7 @@ class HyVideoModelLoader:
     CATEGORY = "HunyuanVideoWrapper"
 
     def loadmodel(self, model, base_precision, load_device,  quantization,
-                  compile_args=None, attention_mode="sdpa", enable_sequential_cpu_offload=False, block_swap_args=None):
+                  compile_args=None, attention_mode="sdpa", block_swap_args=None):
         transformer = None
         manual_offloading = True
         if "sage" in attention_mode:
@@ -164,7 +164,7 @@ class HyVideoModelLoader:
             )
 
         log.info("Using accelerate to load and assign model weights to device...")
-        if quantization == "fp8_e4m3fn":
+        if quantization == "fp8_e4m3fn" or quantization == "fp8_e4m3fn_fast":
             dtype = torch.float8_e4m3fn
         else:
             dtype = base_dtype
@@ -221,6 +221,12 @@ class HyVideoModelLoader:
             
             manual_offloading = False # to disable manual .to(device) calls
             log.info(f"Quantized transformer blocks to {quantization}")
+
+        elif quantization == "fp8_e4m3fn_fast":
+            from .fp8_optimization import convert_fp8_linear
+            if "1.5" in model:
+                params_to_keep.update({"ff"}) #otherwise NaNs
+            convert_fp8_linear(transformer, base_dtype, params_to_keep=params_to_keep)
             
         scheduler = FlowMatchDiscreteScheduler(
             shift=9.0,
