@@ -157,6 +157,7 @@ class HyVideoModelLoader:
                 in_channels=in_channels,
                 out_channels=out_channels,
                 attention_mode=attention_mode,
+                main_device=device,
                 offload_device=offload_device,
                 **HUNYUAN_VIDEO_CONFIG,
                 **factor_kwargs
@@ -646,8 +647,15 @@ class HyVideoSampler:
         # ) if any(q in model["quantization"] for q in ("e4m3fn", "GGUF")) else nullcontext()
         #with autocast_context:
         if model["block_swap_args"] is not None:
-            model["pipe"].transformer.to(device)
+            for name, param in model["pipe"].transformer.named_parameters():
+                #print(name, param.data.device)
+                if "single" not in name and "double" not in name:
+                    param.data = param.data.to(device)
+                
             model["pipe"].transformer.block_swap(model["block_swap_args"]["double_blocks_to_swap"] , model["block_swap_args"]["single_blocks_to_swap"])
+            # for name, param in model["pipe"].transformer.named_parameters():
+            #     print(name, param.data.device)
+          
         elif model["manual_offloading"]:
             model["pipe"].transformer.to(device)
         

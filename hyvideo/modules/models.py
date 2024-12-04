@@ -443,6 +443,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         text_states_dim_2: int = 768,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
+        main_device: Optional[torch.device] = None,
         offload_device: Optional[torch.device] = None,
         attention_mode: str = "flash_attn",
     ):
@@ -456,7 +457,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         self.guidance_embed = guidance_embed
         self.rope_dim_list = rope_dim_list
 
-        self.main_device = device
+        self.main_device = main_device
         self.offload_device = offload_device
 
         # Text projection. Default to linear projection.
@@ -572,11 +573,11 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         self.single_blocks_to_swap = single_blocks_to_swap
         for b, block in enumerate(self.double_blocks):
             if b < 0 or b > self.double_blocks_to_swap:
-                mm.soft_empty_cache()
+                #mm.soft_empty_cache()
                 block.to(self.main_device)
         for b, block in enumerate(self.single_blocks):
             if b < 0 or b > self.single_blocks_to_swap:
-                mm.soft_empty_cache()
+                #mm.soft_empty_cache()
                 block.to(self.main_device)
 
     def enable_deterministic(self):
@@ -669,7 +670,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
             img, txt = block(*double_block_args)
             if b >= 0 and b <= self.double_blocks_to_swap:
-                mm.soft_empty_cache()
+                #mm.soft_empty_cache()
                 block.to(self.offload_device, non_blocking=True)
 
         # Merge txt and img to pass through single stream blocks.
@@ -692,7 +693,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
                 x = block(*single_block_args)
                 if b >= 0 and b <= self.single_blocks_to_swap:
-                    mm.soft_empty_cache()
+                    #mm.soft_empty_cache()
                     block.to(self.offload_device, non_blocking=True)
 
         img = x[:, :img_seq_len, ...]
