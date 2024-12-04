@@ -1,17 +1,280 @@
 {
-  "last_node_id": 17,
-  "last_link_id": 17,
+  "last_node_id": 36,
+  "last_link_id": 44,
   "nodes": [
     {
-      "id": 11,
-      "type": "VHS_VideoCombine",
+      "id": 7,
+      "type": "HyVideoVAELoader",
       "pos": [
-        1634,
-        75
+        -295,
+        -284
       ],
       "size": [
-        632.9049682617188,
-        707.0656127929688
+        379.166748046875,
+        82
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "compile_args",
+          "type": "COMPILEARGS",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoVAELoader"
+      },
+      "widgets_values": [
+        "hyvid\\hunyuan_video_vae_bf16.safetensors",
+        "fp16"
+      ]
+    },
+    {
+      "id": 1,
+      "type": "HyVideoModelLoader",
+      "pos": [
+        -314,
+        -76
+      ],
+      "size": [
+        509.7506103515625,
+        178
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "compile_args",
+          "type": "COMPILEARGS",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "block_swap_args",
+          "type": "BLOCKSWAPARGS",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "HYVIDEOMODEL",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoModelLoader"
+      },
+      "widgets_values": [
+        "hyvideo\\hunyuan_video_720_fp8_e4m3fn.safetensors",
+        "bf16",
+        "fp8_e4m3fn",
+        "main_device",
+        "sageattn_varlen"
+      ]
+    },
+    {
+      "id": 16,
+      "type": "DownloadAndLoadHyVideoTextEncoder",
+      "pos": [
+        -312,
+        243
+      ],
+      "size": [
+        441,
+        106
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "hyvid_text_encoder",
+          "type": "HYVIDTEXTENCODER",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadHyVideoTextEncoder"
+      },
+      "widgets_values": [
+        "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
+        "openai/clip-vit-large-patch14",
+        "fp16"
+      ]
+    },
+    {
+      "id": 30,
+      "type": "HyVideoTextEncode",
+      "pos": [
+        179,
+        242
+      ],
+      "size": [
+        407.9995422363281,
+        292.218505859375
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text_encoders",
+          "type": "HYVIDTEXTENCODER",
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "hyvid_embeds",
+          "type": "HYVIDEMBEDS",
+          "links": [
+            36
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoTextEncode"
+      },
+      "widgets_values": [
+        "high quality nature video of a red panda balancing on a bamboo stick while a bird lands on the panda's head, there's a waterfall in the background",
+        "bad quality video",
+        true
+      ]
+    },
+    {
+      "id": 3,
+      "type": "HyVideoSampler",
+      "pos": [
+        266,
+        -141
+      ],
+      "size": [
+        315,
+        314
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "HYVIDEOMODEL",
+          "link": 2
+        },
+        {
+          "name": "hyvid_embeds",
+          "type": "HYVIDEMBEDS",
+          "link": 36
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoSampler"
+      },
+      "widgets_values": [
+        512,
+        320,
+        69,
+        30,
+        2.5,
+        9,
+        3,
+        "fixed",
+        1,
+        1
+      ]
+    },
+    {
+      "id": 5,
+      "type": "HyVideoDecode",
+      "pos": [
+        651,
+        -285
+      ],
+      "size": [
+        345.4285888671875,
+        102
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            42
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoDecode"
+      },
+      "widgets_values": [
+        true,
+        16
+      ]
+    },
+    {
+      "id": 34,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        657,
+        -112
+      ],
+      "size": [
+        580.7774658203125,
+        674.4859008789062
       ],
       "flags": {},
       "order": 6,
@@ -20,7 +283,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 13
+          "link": 42
         },
         {
           "name": "audio",
@@ -65,7 +328,7 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "HunyuanVideo_00007.mp4",
+            "filename": "HunyuanVideo_00063.mp4",
             "subfolder": "",
             "type": "temp",
             "format": "video/h264-mp4",
@@ -74,257 +337,6 @@
           "muted": false
         }
       }
-    },
-    {
-      "id": 1,
-      "type": "HyVideoModelLoader",
-      "pos": [
-        124,
-        105
-      ],
-      "size": [
-        509.7506103515625,
-        178
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "compile_args",
-          "type": "COMPILEARGS",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "model",
-          "type": "HYVIDEOMODEL",
-          "links": [
-            2
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoModelLoader"
-      },
-      "widgets_values": [
-        "hyvideo\\hunyuan_video_720_fp8_e4m3fn.safetensors",
-        "bf16",
-        "fp8_e4m3fn",
-        "offload_device",
-        false,
-        "sageattn_varlen"
-      ]
-    },
-    {
-      "id": 4,
-      "type": "HyVideoTextEncode",
-      "pos": [
-        616,
-        428
-      ],
-      "size": [
-        479.02203369140625,
-        251.63218688964844
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text_encoders",
-          "type": "HYVIDTEXTENCODER",
-          "link": 17
-        }
-      ],
-      "outputs": [
-        {
-          "name": "hyvid_embeds",
-          "type": "HYVIDEMBEDS",
-          "links": [
-            12
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoTextEncode"
-      },
-      "widgets_values": [
-        "A cat walks on the grass, realistic style",
-        "bad quality video, slow motion",
-        true
-      ]
-    },
-    {
-      "id": 3,
-      "type": "HyVideoSampler",
-      "pos": [
-        768,
-        106
-      ],
-      "size": [
-        315,
-        246
-      ],
-      "flags": {},
-      "order": 4,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "HYVIDEOMODEL",
-          "link": 2
-        },
-        {
-          "name": "hyvid_embeds",
-          "type": "HYVIDEMBEDS",
-          "link": 12
-        }
-      ],
-      "outputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "links": [
-            4
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoSampler"
-      },
-      "widgets_values": [
-        512,
-        320,
-        81,
-        4,
-        4,
-        1008437192147815,
-        "fixed",
-        true
-      ]
-    },
-    {
-      "id": 5,
-      "type": "HyVideoDecode",
-      "pos": [
-        1225,
-        313
-      ],
-      "size": [
-        315,
-        102
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 6
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 4
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            13
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoDecode"
-      },
-      "widgets_values": [
-        true,
-        16
-      ]
-    },
-    {
-      "id": 16,
-      "type": "DownloadAndLoadHyVideoTextEncoder",
-      "pos": [
-        133,
-        427
-      ],
-      "size": [
-        441,
-        106
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "hyvid_text_encoder",
-          "type": "HYVIDTEXTENCODER",
-          "links": [
-            17
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DownloadAndLoadHyVideoTextEncoder"
-      },
-      "widgets_values": [
-        "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
-        "openai/clip-vit-large-patch14",
-        "fp16"
-      ]
-    },
-    {
-      "id": 7,
-      "type": "HyVideoVAELoader",
-      "pos": [
-        1183,
-        89
-      ],
-      "size": [
-        379.166748046875,
-        82
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "compile_args",
-          "type": "COMPILEARGS",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "vae",
-          "type": "VAE",
-          "links": [
-            6
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoVAELoader"
-      },
-      "widgets_values": [
-        "hyvid\\hunyuan_video_vae_bf16.safetensors",
-        "bf16"
-      ]
     }
   ],
   "links": [
@@ -353,28 +365,28 @@
       "VAE"
     ],
     [
-      12,
-      4,
+      35,
+      16,
+      0,
+      30,
+      0,
+      "HYVIDTEXTENCODER"
+    ],
+    [
+      36,
+      30,
       0,
       3,
       1,
       "HYVIDEMBEDS"
     ],
     [
-      13,
+      42,
       5,
       0,
-      11,
+      34,
       0,
       "IMAGE"
-    ],
-    [
-      17,
-      16,
-      0,
-      4,
-      0,
-      "HYVIDTEXTENCODER"
     ]
   ],
   "groups": [],
@@ -383,8 +395,8 @@
     "ds": {
       "scale": 0.9090909090909091,
       "offset": [
-        105.44467975365966,
-        249.98241175433185
+        684.9559445183311,
+        483.7428286365211
       ]
     }
   },
