@@ -2,7 +2,12 @@
 
 ## WORK IN PROGRESS
 
+Vid2vid test:
 
+https://github.com/user-attachments/assets/12940721-4168-4e2b-8a71-31b4b0432314
+
+
+text2vid (old test):
 https://github.com/user-attachments/assets/3750da65-9753-4bd2-aae2-a688d2b86115
 
 
