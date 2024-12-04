@@ -173,6 +173,12 @@ class HyVideoModelLoader:
             dtype_to_use = base_dtype if any(keyword in name for keyword in params_to_keep) else dtype
             set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=dtype_to_use, value=sd[name])
         transformer.eval()
+
+        if quantization == "fp8_e4m3fn_fast":
+            from .fp8_optimization import convert_fp8_linear
+            if "1.5" in model:
+                params_to_keep.update({"ff"}) #otherwise NaNs
+            convert_fp8_linear(transformer, base_dtype, params_to_keep=params_to_keep)
         
         #compile
         if compile_args is not None:
@@ -222,12 +228,7 @@ class HyVideoModelLoader:
             manual_offloading = False # to disable manual .to(device) calls
             log.info(f"Quantized transformer blocks to {quantization}")
 
-        elif quantization == "fp8_e4m3fn_fast":
-            from .fp8_optimization import convert_fp8_linear
-            if "1.5" in model:
-                params_to_keep.update({"ff"}) #otherwise NaNs
-            convert_fp8_linear(transformer, base_dtype, params_to_keep=params_to_keep)
-            
+        
         scheduler = FlowMatchDiscreteScheduler(
             shift=9.0,
             reverse=True,
