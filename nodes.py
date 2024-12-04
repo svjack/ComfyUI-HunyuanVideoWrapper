@@ -648,7 +648,7 @@ class HyVideoSampler:
         if model["block_swap_args"] is not None:
             model["pipe"].transformer.to(device)
             model["pipe"].transformer.block_swap(20, 0)
-        elif not model["manual_offloading"]:
+        elif model["manual_offloading"]:
             model["pipe"].transformer.to(device)
         
         out_latents = model["pipe"](
