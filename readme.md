@@ -2,6 +2,10 @@
 
 ## WORK IN PROGRESS
 
+
+https://github.com/user-attachments/assets/3750da65-9753-4bd2-aae2-a688d2b86115
+
+
 **Currently seems to require flash_attn (default) or sageattn, spda is not working**
 
 Transformer and VAE (single files, no autodownload):
