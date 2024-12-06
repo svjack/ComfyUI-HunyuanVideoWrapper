@@ -21,6 +21,7 @@ def load_text_encoder(
     text_encoder_path=None,
     logger=None,
     device=None,
+    quantization_config=None,
 ):
     if text_encoder_path is None:
         text_encoder_path = TEXT_ENCODER_PATH[text_encoder_type]
@@ -34,14 +35,16 @@ def load_text_encoder(
         text_encoder.final_layer_norm = text_encoder.text_model.final_layer_norm
     elif text_encoder_type == "llm":
         text_encoder = AutoModel.from_pretrained(
-            text_encoder_path, low_cpu_mem_usage=True
+            text_encoder_path, 
+            low_cpu_mem_usage=True,
+            quantization_config=quantization_config
         )
         text_encoder.final_layer_norm = text_encoder.norm
     else:
         raise ValueError(f"Unsupported text encoder type: {text_encoder_type}")
     # from_pretrained will ensure that the model is in eval mode.
 
-    if text_encoder_precision is not None:
+    if text_encoder_precision is not None and quantization_config is None:
         text_encoder = text_encoder.to(dtype=PRECISION_TO_TYPE[text_encoder_precision])
 
     text_encoder.requires_grad_(False)
@@ -49,7 +52,7 @@ def load_text_encoder(
     if logger is not None:
         logger.info(f"Text encoder to dtype: {text_encoder.dtype}")
 
-    if device is not None:
+    if device is not None and quantization_config is None:
         text_encoder = text_encoder.to(device)
 
     return text_encoder, text_encoder_path
@@ -118,6 +121,7 @@ class TextEncoder(nn.Module):
         reproduce: bool = False,
         logger=None,
         device=None,
+        quantization_config=None,
     ):
         super().__init__()
         self.text_encoder_type = text_encoder_type
@@ -183,6 +187,7 @@ class TextEncoder(nn.Module):
             text_encoder_path=self.model_path,
             logger=self.logger,
             device=device,
+            quantization_config=quantization_config,
         )
         self.dtype = self.model.dtype
         self.device = self.model.device

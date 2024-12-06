@@ -374,6 +374,7 @@ class DownloadAndLoadHyVideoTextEncoder:
             "optional": {
                 "apply_final_norm": ("BOOLEAN", {"default": False}),
                 "hidden_state_skip_layer": ("INT", {"default": 2}),
+                "quantization": (['disabled', 'bnb_nf4'], {"default": 'disabled'}),
             }
         }
 
@@ -383,11 +384,22 @@ class DownloadAndLoadHyVideoTextEncoder:
     CATEGORY = "HunyuanVideoWrapper"
     DESCRIPTION = "Loads Hunyuan text_encoder model from 'ComfyUI/models/LLM'"
 
-    def loadmodel(self, llm_model, clip_model, precision, apply_final_norm=False, hidden_state_skip_layer=2, use_prompt_templates=True):
+    def loadmodel(self, llm_model, clip_model, precision, apply_final_norm=False, hidden_state_skip_layer=2, use_prompt_templates=True, quantization="disabled"):
         
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
+        if quantization == "bnb_nf4":
+            from transformers import BitsAndBytesConfig
+
+            quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.bfloat16
+            )
+        else:
+            quantization_config = None
         if clip_model != "disabled":
             clip_model_path = os.path.join(folder_paths.models_dir, "clip", "clip-vit-large-patch14")
             if not os.path.exists(clip_model_path):
@@ -443,6 +455,7 @@ class DownloadAndLoadHyVideoTextEncoder:
             apply_final_norm=apply_final_norm,
             logger=log,
             device=device,
+            quantization_config=quantization_config
         )
        
         
