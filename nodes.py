@@ -1,15 +1,11 @@
 import os
 import torch
 import json
-from einops import rearrange
-from contextlib import nullcontext
 from typing import List
-from pathlib import Path
 from .utils import log, check_diffusers_version, print_memory
 from diffusers.video_processor import VideoProcessor
 
-from .hyvideo.constants import PROMPT_TEMPLATE, NEGATIVE_PROMPT, PRECISION_TO_TYPE
-from .hyvideo.vae import load_vae
+from .hyvideo.constants import PROMPT_TEMPLATE
 from .hyvideo.text_encoder import TextEncoder
 from .hyvideo.utils.data_utils import align_to
 from .hyvideo.modules.posemb_layers import get_nd_rotary_pos_embed
@@ -107,8 +103,9 @@ class HyVideoModelLoader:
             "optional": {
                 "attention_mode": ([
                     "sdpa",
-                    "flash_attn",
+                    "flash_attn_varlen",
                     "sageattn_varlen",
+                    "comfy",
                     ], {"default": "flash_attn"}),
                 "compile_args": ("COMPILEARGS", ),
                 "block_swap_args": ("BLOCKSWAPARGS", ),
@@ -176,8 +173,6 @@ class HyVideoModelLoader:
 
         if quantization == "fp8_e4m3fn_fast":
             from .fp8_optimization import convert_fp8_linear
-            if "1.5" in model:
-                params_to_keep.update({"ff"}) #otherwise NaNs
             convert_fp8_linear(transformer, base_dtype, params_to_keep=params_to_keep)
         
         #compile
@@ -466,7 +461,7 @@ class HyVideoTextEncode:
         def encode_prompt(self, prompt, negative_prompt, text_encoder):
             batch_size = 1
             num_videos_per_prompt = 1
-            do_classifier_free_guidance = True
+            do_classifier_free_guidance = False
             data_type = "video"
             
             text_inputs = text_encoder.text2tokens(prompt, data_type=data_type)
@@ -475,6 +470,7 @@ class HyVideoTextEncode:
             prompt_embeds = prompt_outputs.hidden_state
             
             attention_mask = prompt_outputs.attention_mask
+            print("prompt attention_mask: ", attention_mask.shape)
             if attention_mask is not None:
                 attention_mask = attention_mask.to(device)
                 bs_embed, seq_len = attention_mask.shape
@@ -544,6 +540,9 @@ class HyVideoTextEncode:
                     negative_attention_mask = negative_attention_mask.view(
                         batch_size * num_videos_per_prompt, seq_len
                     )
+            else:
+                negative_prompt_embeds = None
+                negative_attention_mask = None
 
             if do_classifier_free_guidance:
                 # duplicate unconditional embeddings for each generation per prompt, using mps friendly method

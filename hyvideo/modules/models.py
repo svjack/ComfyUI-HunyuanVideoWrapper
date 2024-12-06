@@ -141,6 +141,7 @@ class MMDoubleStreamBlock(nn.Module):
         max_seqlen_q: Optional[int] = None,
         max_seqlen_kv: Optional[int] = None,
         freqs_cis: tuple = None,
+        attn_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         (
             img_mod1_shift,
@@ -189,6 +190,7 @@ class MMDoubleStreamBlock(nn.Module):
         txt_q, txt_k, txt_v = rearrange(
             txt_qkv, "B L (K H D) -> K B L H D", K=3, H=self.heads_num
         )
+                
         # Apply QK-Norm if needed.
         txt_q = self.txt_attn_q_norm(txt_q).to(txt_v)
         txt_k = self.txt_attn_k_norm(txt_k).to(txt_v)
@@ -204,12 +206,14 @@ class MMDoubleStreamBlock(nn.Module):
             q,
             k,
             v,
+            heads = self.heads_num,
             mode=self.attention_mode,
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
             max_seqlen_q=max_seqlen_q,
             max_seqlen_kv=max_seqlen_kv,
             batch_size=img_k.shape[0],
+            attn_mask=attn_mask
         )
 
         img_attn, txt_attn = attn[:, : img.shape[1]], attn[:, img.shape[1] :]
@@ -322,6 +326,7 @@ class MMSingleStreamBlock(nn.Module):
         max_seqlen_q: Optional[int] = None,
         max_seqlen_kv: Optional[int] = None,
         freqs_cis: Tuple[torch.Tensor, torch.Tensor] = None,
+        attn_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         mod_shift, mod_scale, mod_gate = self.modulation(vec).chunk(3, dim=-1)
         x_mod = modulate(self.pre_norm(x), shift=mod_shift, scale=mod_scale)
@@ -355,12 +360,14 @@ class MMSingleStreamBlock(nn.Module):
             q,
             k,
             v,
+            heads = self.heads_num,
             mode=self.attention_mode,
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
             max_seqlen_q=max_seqlen_q,
             max_seqlen_kv=max_seqlen_kv,
             batch_size=x.shape[0],
+            attn_mask=attn_mask
         )
 
         # Compute activation in mlp stream, cat again and run second linear layer.
@@ -651,6 +658,16 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         max_seqlen_q = img_seq_len + txt_seq_len
         max_seqlen_kv = max_seqlen_q
 
+        # Create a square boolean mask filled with False
+        attn_mask = torch.zeros((1, max_seqlen_q, max_seqlen_q), dtype=torch.bool, device=text_mask.device)
+
+        # Calculate the valid attention regions
+        text_len = text_mask[0].sum().item()
+        total_len = text_len + img_seq_len
+
+        # Allow attention to all tokens up to total_len
+        attn_mask[0, :total_len, :total_len] = True
+
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
         # --------------------- Pass through DiT blocks ------------------------
         for b, block in enumerate(self.double_blocks):
@@ -666,6 +683,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
                 max_seqlen_q,
                 max_seqlen_kv,
                 freqs_cis,
+                attn_mask
             ]
 
             img, txt = block(*double_block_args)
@@ -689,6 +707,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
                     max_seqlen_q,
                     max_seqlen_kv,
                     (freqs_cos, freqs_sin),
+                    attn_mask
                 ]
 
                 x = block(*single_block_args)

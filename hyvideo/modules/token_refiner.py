@@ -90,7 +90,7 @@ class IndividualTokenRefinerBlock(nn.Module):
         k = self.self_attn_k_norm(k).to(v)
 
         # Self-Attention
-        attn = attention(q, k, v, mode="sdpa", attn_mask=attn_mask)
+        attn = attention(q, k, v, heads = self.heads_num,mode="sdpa", attn_mask=attn_mask)
 
         x = x + apply_gate(self.self_attn_proj(attn), gate_msa)
 

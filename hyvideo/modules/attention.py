@@ -1,14 +1,13 @@
-import importlib.metadata
 import math
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 try:
     from flash_attn.flash_attn_interface import flash_attn_varlen_func
 except ImportError:
     flash_attn_varlen_func = None
+
 try:
     from sageattention import sageattn_varlen
     @torch.compiler.disable()
@@ -22,11 +21,13 @@ try:
             max_seqlen_kv,
         ):
         return sageattn_varlen(q, k, v, cu_seqlens_q, cu_seqlens_kv, max_seqlen_q, max_seqlen_kv)
-except:
-    pass
+except ImportError:
+    sageattn_varlen_func = None
+
+from comfy.ldm.modules.attention import optimized_attention
 
 MEMORY_LAYOUT = {
-    "flash_attn": (
+    "flash_attn_varlen": (
         lambda x: x.view(x.shape[0] * x.shape[1], *x.shape[2:]),
         lambda x: x,
     ),
@@ -38,7 +39,7 @@ MEMORY_LAYOUT = {
         lambda x: x.transpose(1, 2),
         lambda x: x.transpose(1, 2),
     ),
-    "sageattn": (
+    "comfy": (
         lambda x: x.transpose(1, 2),
         lambda x: x.transpose(1, 2),
     ),
@@ -79,6 +80,7 @@ def attention(
     q,
     k,
     v,
+    heads,
     mode="flash_attn",
     drop_rate=0,
     attn_mask=None,
@@ -88,6 +90,7 @@ def attention(
     max_seqlen_q=None,
     max_seqlen_kv=None,
     batch_size=1,
+    
 ):
     """
     Perform QKV self attention.
@@ -136,6 +139,9 @@ def attention(
         x = x.view(
             batch_size, max_seqlen_q, x.shape[-2], x.shape[-1]
         )  # reshape x to [b, s, a, d]
+    elif mode == "comfy":
+        x = optimized_attention(q, k, v, mask=attn_mask, heads=heads, skip_reshape=True)
+      
     elif mode == "flash_attn":
         x = flash_attn_varlen_func(
             q,
@@ -182,7 +188,8 @@ def attention(
     else:
         raise NotImplementedError(f"Unsupported attention mode: {mode}")
 
-    x = post_attn_layout(x)
-    b, s, a, d = x.shape
-    out = x.reshape(b, s, -1)
-    return out
+    if mode != "comfy":
+        x = post_attn_layout(x)
+        b, s, a, d = x.shape
+        return x.reshape(b, s, -1)
+    return x
