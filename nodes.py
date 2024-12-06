@@ -352,6 +352,7 @@ class DownloadAndLoadHyVideoTextEncoder:
             "optional": {
                 "apply_final_norm": ("BOOLEAN", {"default": False}),
                 "hidden_state_skip_layer": ("INT", {"default": 2}),
+                "use_prompt_templates": ("BOOLEAN", {"default": True, "tooltip": "Use the default prompt templates for the llm text encoder"}),
             }
         }
 
@@ -361,7 +362,7 @@ class DownloadAndLoadHyVideoTextEncoder:
     CATEGORY = "HunyuanVideoWrapper"
     DESCRIPTION = "Loads Hunyuan text_encoder model from 'ComfyUI/models/LLM'"
 
-    def loadmodel(self, llm_model, clip_model, precision, apply_final_norm=False, hidden_state_skip_layer=2):
+    def loadmodel(self, llm_model, clip_model, precision, apply_final_norm=False, hidden_state_skip_layer=2, use_prompt_templates=True):
         
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -415,8 +416,8 @@ class DownloadAndLoadHyVideoTextEncoder:
             max_length=256,
             text_encoder_precision=precision,
             tokenizer_type="llm",
-            prompt_template=prompt_template,
-            prompt_template_video=prompt_template_video,
+            prompt_template=prompt_template if use_prompt_templates else None,
+            prompt_template_video=prompt_template_video if use_prompt_templates else None,
             hidden_state_skip_layer=hidden_state_skip_layer,
             apply_final_norm=apply_final_norm,
             logger=log,
