@@ -327,6 +327,7 @@ class MMSingleStreamBlock(nn.Module):
         max_seqlen_kv: Optional[int] = None,
         freqs_cis: Tuple[torch.Tensor, torch.Tensor] = None,
         attn_mask: Optional[torch.Tensor] = None,
+        stg_mode: Optional[str] = None,
     ) -> torch.Tensor:
         mod_shift, mod_scale, mod_gate = self.modulation(vec).chunk(3, dim=-1)
         x_mod = modulate(self.pre_norm(x), shift=mod_shift, scale=mod_scale)
@@ -356,23 +357,63 @@ class MMSingleStreamBlock(nn.Module):
         #assert (
         #    cu_seqlens_q.shape[0] == 2 * x.shape[0] + 1
         #), f"cu_seqlens_q.shape:{cu_seqlens_q.shape}, x.shape[0]:{x.shape[0]}"
-        attn = attention(
-            q,
-            k,
-            v,
-            heads = self.heads_num,
-            mode=self.attention_mode,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_kv,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_kv=max_seqlen_kv,
-            batch_size=x.shape[0],
-            attn_mask=attn_mask
-        )
+        if stg_mode is not None:
+            if stg_mode == "STG-A":
+                attn = attention(
+                    q,
+                    k,
+                    v,
+                    heads = self.heads_num,
+                    mode=self.attention_mode,
+                    cu_seqlens_q=cu_seqlens_q,
+                    cu_seqlens_kv=cu_seqlens_kv,
+                    max_seqlen_q=max_seqlen_q,
+                    max_seqlen_kv=max_seqlen_kv,
+                    batch_size=x.shape[0],
+                    do_stg=True,
+                    txt_len=txt_len,
+                    attn_mask=attn_mask
+                )
+                output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
+                return x + apply_gate(output, gate=mod_gate)
+            elif stg_mode == "STG-R":
+                attn = attention(
+                    q,
+                    k,
+                    v,
+                    heads = self.heads_num,
+                    mode=self.attention_mode,
+                    cu_seqlens_q=cu_seqlens_q,
+                    cu_seqlens_kv=cu_seqlens_kv,
+                    max_seqlen_q=max_seqlen_q,
+                    max_seqlen_kv=max_seqlen_kv,
+                    batch_size=x.shape[0],
+                    attn_mask=attn_mask
+                )
+                # Compute activation in mlp stream, cat again and run second linear layer.
+                output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
+                output = apply_gate(output, gate=mod_gate)
+                batch_size = output.shape[0]
+                output[:batch_size-1, :, :] = 0
+                return x + output
+        else:
+            attn = attention(
+                q,
+                k,
+                v,
+                heads = self.heads_num,
+                mode=self.attention_mode,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_kv=cu_seqlens_kv,
+                max_seqlen_q=max_seqlen_q,
+                max_seqlen_kv=max_seqlen_kv,
+                batch_size=x.shape[0],
+                attn_mask=attn_mask
+            )
 
-        # Compute activation in mlp stream, cat again and run second linear layer.
-        output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
-        return x + apply_gate(output, gate=mod_gate)
+            # Compute activation in mlp stream, cat again and run second linear layer.
+            output = self.linear2(torch.cat((attn, self.mlp_act(mlp)), 2))
+            return x + apply_gate(output, gate=mod_gate)
 
 
 class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
@@ -610,6 +651,8 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         freqs_cos: Optional[torch.Tensor] = None,
         freqs_sin: Optional[torch.Tensor] = None,
         guidance: torch.Tensor = None,  # Guidance for modulation, should be cfg_scale x 1000.
+        stg_mode: str = None,
+        stg_block_idx: int = -1,
         return_dict: bool = True,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         out = {}
@@ -701,6 +744,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
                 if b >= 0 and b <= self.single_blocks_to_swap:
                     mm.soft_empty_cache()
                     block.to(self.main_device)
+                curr_stg_mode = stg_mode if b == stg_block_idx else None
                 single_block_args = [
                     x,
                     vec,
@@ -710,7 +754,8 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
                     max_seqlen_q,
                     max_seqlen_kv,
                     (freqs_cos, freqs_sin),
-                    attn_mask
+                    attn_mask,
+                    curr_stg_mode,
                 ]
 
                 x = block(*single_block_args)

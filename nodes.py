@@ -87,7 +87,26 @@ class HyVideoBlockSwap:
 
     def setargs(self, **kwargs):
         return (kwargs, )
-    
+
+class HyVideoSTG:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": { 
+                "stg_mode": (["STG-A", "STG-R"],),
+                "stg_block_idx": ("INT", {"default": 0, "min": -1, "max": 39, "step": 1, "tooltip": "Block index to apply STG"}),
+                "stg_scale": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "Recommended values are ≤2.0"}),
+            },
+        }
+    RETURN_TYPES = ("STGARGS",)
+    RETURN_NAMES = ("stg_args",)
+    FUNCTION = "setargs"
+    CATEGORY = "HunyuanVideoWrapper"
+    DESCRIPTION = "Spatio Temporal Guidance, https://github.com/junhahyung/STGuidance"
+
+    def setargs(self, **kwargs):
+        return (kwargs, )
+
 #region Model loading
 class HyVideoModelLoader:
     @classmethod
@@ -97,7 +116,7 @@ class HyVideoModelLoader:
                 "model": (folder_paths.get_filename_list("diffusion_models"), {"tooltip": "These models are loaded from the 'ComfyUI/models/diffusion_models' -folder",}),
             
             "base_precision": (["fp16", "fp32", "bf16"], {"default": "bf16"}),
-            "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6"], {"default": 'disabled', "tooltip": "optional quantization method"}),
+            "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6", "torchao_int4"], {"default": 'disabled', "tooltip": "optional quantization method"}),
             "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
             },
             "optional": {
@@ -197,7 +216,8 @@ class HyVideoModelLoader:
                 quantize_,
                 fpx_weight_only,
                 float8_dynamic_activation_float8_weight,
-                int8_dynamic_activation_int8_weight
+                int8_dynamic_activation_int8_weight,
+                int4_weight_only
             )
             except:
                 raise ImportError("torchao is not installed, please install torchao to use fp8dq")
@@ -210,6 +230,8 @@ class HyVideoModelLoader:
             
             if "fp6" in quantization: #slower for some reason on 4090
                 quant_func = fpx_weight_only(3, 2)
+            elif "int4" in quantization:
+                quant_func = int4_weight_only()
             elif "fp8dq" in quantization: #very fast on 4090 when compiled
                 quant_func = float8_dynamic_activation_float8_weight()
             elif 'fp8dqrow' in quantization:
@@ -218,7 +240,7 @@ class HyVideoModelLoader:
             elif 'int8dq' in quantization:
                 quant_func = int8_dynamic_activation_int8_weight()
         
-            quantize_(transformer, quant_func)
+            quantize_(transformer, quant_func, device=device)
             
             manual_offloading = False # to disable manual .to(device) calls
             log.info(f"Quantized transformer blocks to {quantization}")
@@ -243,7 +265,7 @@ class HyVideoModelLoader:
             "model_name": model,
             "manual_offloading": manual_offloading,
             "quantization": "disabled",
-            "block_swap_args": block_swap_args
+            "block_swap_args": block_swap_args,
         }
         return (pipeline,)
     
@@ -628,6 +650,7 @@ class HyVideoSampler:
             "optional": {
                 "samples": ("LATENT", {"tooltip": "init Latents to use for video2video process"} ),
                 "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "stg_args": ("STGARGS", ),
             }
         }
 
@@ -636,13 +659,20 @@ class HyVideoSampler:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, seed, width, height, num_frames, samples=None, denoise_strength=1.0, force_offload=True):
+    def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, seed, width, height, num_frames, samples=None, denoise_strength=1.0, force_offload=True, stg_args=None):
         mm.unload_all_models()
         mm.soft_empty_cache()
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         dtype = model["dtype"]
+        transformer = model["pipe"].transformer
+
+        if stg_args is not None:
+            if stg_args["stg_mode"] == "STG-A" and transformer.attention_mode != "sdpa":
+                raise ValueError(
+                    f"STG-A requires attention_mode to be 'sdpa', but got {transformer.attention_mode}."
+            )
         
         generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
@@ -679,17 +709,17 @@ class HyVideoSampler:
         # ) if any(q in model["quantization"] for q in ("e4m3fn", "GGUF")) else nullcontext()
         #with autocast_context:
         if model["block_swap_args"] is not None:
-            for name, param in model["pipe"].transformer.named_parameters():
+            for name, param in transformer.named_parameters():
                 #print(name, param.data.device)
                 if "single" not in name and "double" not in name:
                     param.data = param.data.to(device)
                 
-            model["pipe"].transformer.block_swap(model["block_swap_args"]["double_blocks_to_swap"] , model["block_swap_args"]["single_blocks_to_swap"])
+            transformer.block_swap(model["block_swap_args"]["double_blocks_to_swap"] , model["block_swap_args"]["single_blocks_to_swap"])
             # for name, param in model["pipe"].transformer.named_parameters():
             #     print(name, param.data.device)
           
         elif model["manual_offloading"]:
-            model["pipe"].transformer.to(device)
+            transformer.to(device)
         
         out_latents = model["pipe"](
             num_inference_steps=steps,
@@ -704,6 +734,9 @@ class HyVideoSampler:
             generator=generator,
             freqs_cis=(freqs_cos, freqs_sin),
             n_tokens=n_tokens,
+            stg_mode=stg_args["stg_mode"] if stg_args is not None else None,
+            stg_block_idx=stg_args["stg_block_idx"] if stg_args is not None else -1,
+            stg_scale=stg_args["stg_scale"] if stg_args is not None else 0.0,
         )
 
         print_memory(device)
@@ -714,7 +747,7 @@ class HyVideoSampler:
 
         if force_offload:
             if model["manual_offloading"]:
-                model["pipe"].transformer.to(offload_device)
+                transformer.to(offload_device)
                 mm.soft_empty_cache()
 
         return ({
@@ -893,6 +926,7 @@ NODE_CLASS_MAPPINGS = {
     "HyVideoEncode": HyVideoEncode,
     "HyVideoBlockSwap": HyVideoBlockSwap,
     "HyVideoTorchCompileSettings": HyVideoTorchCompileSettings,
+    "HyVideoSTG": HyVideoSTG,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoSampler": "HunyuanVideo Sampler",
@@ -904,4 +938,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoEncode": "HunyuanVideo Encode",
     "HyVideoBlockSwap": "HunyuanVideo BlockSwap",
     "HyVideoTorchCompileSettings": "HunyuanVideo Torch Compile Settings",
+    "HyVideoSTG": "HunyuanVideo STG",
     }

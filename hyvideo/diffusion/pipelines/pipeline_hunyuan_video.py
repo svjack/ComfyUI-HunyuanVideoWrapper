@@ -302,6 +302,11 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         return self._guidance_scale > 1
 
     @property
+    def do_spatio_temporal_guidance(self):
+        # return self._guidance_scale > 1 and self.transformer.config.time_cond_proj_dim is None
+        return self._stg_scale > 0
+
+    @property
     def cross_attention_kwargs(self):
         return self._cross_attention_kwargs
 
@@ -345,6 +350,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         freqs_cis: Tuple[torch.Tensor, torch.Tensor] = None,
         n_tokens: Optional[int] = None,
         embedded_guidance_scale: Optional[float] = None,
+        stg_mode: Optional[str] = None,
+        stg_block_idx: Optional[int] = -1,
+        stg_scale: Optional[float] = 0.0,
         **kwargs,
     ):
         r"""
@@ -426,7 +434,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
         self._interrupt = False
-
+        self._stg_scale = stg_scale
         # 2. Define call parameters
        
         batch_size = 1
@@ -444,7 +452,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
-        if self.do_classifier_free_guidance:
+        if self.do_classifier_free_guidance and not self.do_spatio_temporal_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             if prompt_mask is not None:
                 prompt_mask = torch.cat([negative_prompt_mask, prompt_mask])
@@ -452,7 +460,29 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
             if prompt_mask_2 is not None:
                 prompt_mask_2 = torch.cat([negative_prompt_mask_2, prompt_mask_2])
-
+        elif self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
+            prompt_embeds = torch.cat(
+                [negative_prompt_embeds, prompt_embeds, prompt_embeds]
+            )
+            if prompt_mask is not None:
+                prompt_mask = torch.cat([negative_prompt_mask, prompt_mask, prompt_mask])
+            if prompt_embeds_2 is not None:
+                prompt_embeds_2 = torch.cat(
+                    [negative_prompt_embeds_2, prompt_embeds_2, prompt_embeds_2]
+                )
+            if prompt_mask_2 is not None:
+                prompt_mask_2 = torch.cat(
+                    [negative_prompt_mask_2, prompt_mask_2, prompt_mask_2]
+                )
+        elif self.do_spatio_temporal_guidance:
+            prompt_embeds = torch.cat([prompt_embeds, prompt_embeds])
+            if prompt_mask is not None:
+                prompt_mask = torch.cat([prompt_mask, prompt_mask])
+            if prompt_embeds_2 is not None:
+                prompt_embeds_2 = torch.cat([prompt_embeds_2, prompt_embeds_2])
+            if prompt_mask_2 is not None:
+                prompt_mask_2 = torch.cat([prompt_mask_2, prompt_mask_2])
+            
 
         # 4. Prepare timesteps
         extra_set_timesteps_kwargs = self.prepare_extra_func_kwargs(
@@ -502,8 +532,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
 
         
         logger.info(f"Sampling {video_length} frames in {latents.shape[2]} latents at {width}x{height} with {num_inference_steps} inference steps")
-        comfy_pbar = ProgressBar(num_inference_steps)
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
+        comfy_pbar = ProgressBar(len(timesteps))
+        with self.progress_bar(total=len(timesteps)) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
@@ -511,7 +541,11 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = (
                     torch.cat([latents] * 2)
-                    if self.do_classifier_free_guidance
+                    if self.do_classifier_free_guidance and not self.do_spatio_temporal_guidance
+                    else torch.cat([latents] * 3)
+                    if self.do_classifier_free_guidance and self.do_spatio_temporal_guidance
+                    else torch.cat([latents] * 2)
+                    if self.do_spatio_temporal_guidance
                     else latents
                 )
                 latent_model_input = self.scheduler.scale_model_input(
@@ -543,14 +577,29 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                         freqs_cos=freqs_cis[0],  # [seqlen, head_dim]
                         freqs_sin=freqs_cis[1],  # [seqlen, head_dim]
                         guidance=guidance_expand,
+                        stg_block_idx=stg_block_idx,
+                        stg_mode=stg_mode,
                         return_dict=True,
                     )["x"]
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if self.do_classifier_free_guidance and not self.do_spatio_temporal_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (
                         noise_pred_text - noise_pred_uncond
+                    )
+                elif self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
+                    raise NotImplementedError
+                    noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    ) + self._stg_scale * (
+                        noise_pred_text - noise_pred_perturb
+                    )
+                elif self.do_spatio_temporal_guidance:
+                    noise_pred_text, noise_pred_perturb = noise_pred.chunk(2)
+                    noise_pred = noise_pred_text + self._stg_scale * (
+                        noise_pred_text - noise_pred_perturb
                     )
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:

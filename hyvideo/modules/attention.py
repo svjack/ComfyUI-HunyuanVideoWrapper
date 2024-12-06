@@ -90,7 +90,8 @@ def attention(
     max_seqlen_q=None,
     max_seqlen_kv=None,
     batch_size=1,
-    
+    do_stg=False,
+    txt_len=-1,
 ):
     """
     Perform QKV self attention.
@@ -122,9 +123,41 @@ def attention(
     if mode == "sdpa":
         if attn_mask is not None and attn_mask.dtype != torch.bool:
             attn_mask = attn_mask.to(q.dtype)
-        x = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal
-        )
+        
+        if do_stg:
+            batch_size = q.shape[0]
+            q, q_perturb = q[:batch_size-1], q[batch_size-1:]
+            k, k_perturb = k[:batch_size-1], k[batch_size-1:]
+            v, v_perturb = v[:batch_size-1], v[batch_size-1:]
+            if attn_mask is not None:
+                attn_mask = attn_mask[:batch_size-1]
+            #print(f"q: {q.shape}")
+            #print(f"q_perturb: {q_perturb.shape}")
+            #print(f"txt_len: {txt_len}")
+            x = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal
+            )
+            #print(f"x: {x.shape}")
+            batch_size = q_perturb.shape[0]
+            seq_len = q_perturb.shape[2]
+            num_heads = q_perturb.shape[1]
+            identity_block_size = seq_len - txt_len
+            full_mask = torch.zeros((seq_len, seq_len), dtype=q_perturb.dtype, device=q_perturb.device)
+            full_mask[:identity_block_size, :identity_block_size] = float("-inf")
+            full_mask[:identity_block_size, :identity_block_size].fill_diagonal_(0)
+            
+            full_mask = full_mask.unsqueeze(0).unsqueeze(0)
+            full_mask = full_mask.expand(batch_size, num_heads, seq_len, seq_len)
+            #print(f"full_mask: {full_mask.shape} is_causal: {causal}")
+            x_perturb = F.scaled_dot_product_attention(
+                q_perturb, k_perturb, v_perturb, attn_mask=full_mask, dropout_p=drop_rate, is_causal=causal,
+            )
+            #print(f"x_perturb: {x_perturb.shape}")
+            x = torch.cat([x, x_perturb], dim=0)
+        else:
+            x = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=attn_mask, dropout_p=drop_rate, is_causal=causal
+            )
     elif mode == "sageattn_varlen":
         x = sageattn_varlen_func(
             q,
