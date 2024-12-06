@@ -2,6 +2,10 @@
 
 ## WORK IN PROGRESS
 
+# Update
+
+Scaled dot product attention (sdpa) should now be working, sageattention is still recommended for speed, but should not be necessary anymore making installation much easier.
+
 Vid2vid test:
 [source video](https://www.pexels.com/video/a-4x4-vehicle-speeding-on-a-dirt-road-during-a-competition-15604814/)
 
@@ -12,8 +16,6 @@ text2vid (old test):
 
 https://github.com/user-attachments/assets/3750da65-9753-4bd2-aae2-a688d2b86115
 
-
-**Currently seems to require flash_attn (default) or sageattn, spda is not working**
 
 Transformer and VAE (single files, no autodownload):
 
@@ -29,7 +31,7 @@ Files go to `ComfyUI/models/LLM/llava-llama-3-8b-text-encoder-tokenizer`
 
 Clip text encoder (has autodownload)
 
-For now using the original https://huggingface.co/openai/clip-vit-large-patch14, files (only need the .safetensor from the weights) go to:
+For now using the original https://huggingface.co/openai/clip-vit-large-patch14, files (only need the .safetensor from the weights and all the config files) go to:
 
 `ComfyUI/models/clip/clip-vit-large-patch14`
 

@@ -81,7 +81,7 @@ def attention(
     k,
     v,
     heads,
-    mode="flash_attn",
+    mode="sdpa",
     drop_rate=0,
     attn_mask=None,
     causal=False,
@@ -142,7 +142,7 @@ def attention(
     elif mode == "comfy":
         x = optimized_attention(q, k, v, mask=attn_mask, heads=heads, skip_reshape=True)
       
-    elif mode == "flash_attn":
+    elif mode == "flash_attn_varlen":
         x = flash_attn_varlen_func(
             q,
             k,

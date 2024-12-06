@@ -48,7 +48,7 @@
         "bf16",
         "fp8_e4m3fn",
         "offload_device",
-        "sageattn_varlen"
+        "sdpa"
       ]
     },
     {

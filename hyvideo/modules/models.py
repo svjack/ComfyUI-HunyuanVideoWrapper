@@ -36,7 +36,7 @@ class MMDoubleStreamBlock(nn.Module):
         qkv_bias: bool = False,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        attention_mode: str = "flash_attn",
+        attention_mode: str = "sdpa",
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -199,9 +199,9 @@ class MMDoubleStreamBlock(nn.Module):
         q = torch.cat((img_q, txt_q), dim=1)
         k = torch.cat((img_k, txt_k), dim=1)
         v = torch.cat((img_v, txt_v), dim=1)
-        assert (
-            cu_seqlens_q.shape[0] == 2 * img.shape[0] + 1
-        ), f"cu_seqlens_q.shape:{cu_seqlens_q.shape}, img.shape[0]:{img.shape[0]}"
+        #assert (
+        #    cu_seqlens_q.shape[0] == 2 * img.shape[0] + 1
+        #), f"cu_seqlens_q.shape:{cu_seqlens_q.shape}, img.shape[0]:{img.shape[0]}"
         attn = attention(
             q,
             k,
@@ -262,7 +262,7 @@ class MMSingleStreamBlock(nn.Module):
         qk_scale: float = None,
         dtype: Optional[torch.dtype] = None,
         device: Optional[torch.device] = None,
-        attention_mode: str = "flash_attn",
+        attention_mode: str = "sdpa",
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -353,9 +353,9 @@ class MMSingleStreamBlock(nn.Module):
             k = torch.cat((img_k, txt_k), dim=1)
 
         # Compute attention.
-        assert (
-            cu_seqlens_q.shape[0] == 2 * x.shape[0] + 1
-        ), f"cu_seqlens_q.shape:{cu_seqlens_q.shape}, x.shape[0]:{x.shape[0]}"
+        #assert (
+        #    cu_seqlens_q.shape[0] == 2 * x.shape[0] + 1
+        #), f"cu_seqlens_q.shape:{cu_seqlens_q.shape}, x.shape[0]:{x.shape[0]}"
         attn = attention(
             q,
             k,
@@ -452,7 +452,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         device: Optional[torch.device] = None,
         main_device: Optional[torch.device] = None,
         offload_device: Optional[torch.device] = None,
-        attention_mode: str = "flash_attn",
+        attention_mode: str = "sdpa",
     ):
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -466,6 +466,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
         self.main_device = main_device
         self.offload_device = offload_device
+        self.attention_mode = attention_mode
 
         # Text projection. Default to linear projection.
         # Alternative: TokenRefiner. See more details (LI-DiT): http://arxiv.org/abs/2406.11831
@@ -651,22 +652,24 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
         txt_seq_len = txt.shape[1]
         img_seq_len = img.shape[1]
+        max_seqlen_q = max_seqlen_kv = img_seq_len + txt_seq_len
 
-        # Compute cu_squlens and max_seqlen for flash attention
-        cu_seqlens_q = get_cu_seqlens(text_mask, img_seq_len)
-        cu_seqlens_kv = cu_seqlens_q
-        max_seqlen_q = img_seq_len + txt_seq_len
-        max_seqlen_kv = max_seqlen_q
+        if self.attention_mode == "sdpa" or self.attention_mode == "comfy":
+            cu_seqlens_q, cu_seqlens_kv = None, None
+            # Create a square boolean mask filled with False
+            attn_mask = torch.zeros((1, max_seqlen_q, max_seqlen_q), dtype=torch.bool, device=text_mask.device)
 
-        # Create a square boolean mask filled with False
-        attn_mask = torch.zeros((1, max_seqlen_q, max_seqlen_q), dtype=torch.bool, device=text_mask.device)
+            # Calculate the valid attention regions
+            text_len = text_mask[0].sum().item()
+            total_len = text_len + img_seq_len
 
-        # Calculate the valid attention regions
-        text_len = text_mask[0].sum().item()
-        total_len = text_len + img_seq_len
-
-        # Allow attention to all tokens up to total_len
-        attn_mask[0, :total_len, :total_len] = True
+            # Allow attention to all tokens up to total_len
+            attn_mask[0, :total_len, :total_len] = True
+        else:
+            attn_mask = None
+            # Compute cu_squlens for flash attention
+            cu_seqlens_q = get_cu_seqlens(text_mask, img_seq_len)
+            cu_seqlens_kv = cu_seqlens_q
 
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
         # --------------------- Pass through DiT blocks ------------------------
