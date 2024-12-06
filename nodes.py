@@ -352,7 +352,6 @@ class DownloadAndLoadHyVideoTextEncoder:
             "optional": {
                 "apply_final_norm": ("BOOLEAN", {"default": False}),
                 "hidden_state_skip_layer": ("INT", {"default": 2}),
-                "use_prompt_templates": ("BOOLEAN", {"default": True, "tooltip": "Use the default prompt templates for the llm text encoder"}),
             }
         }
 
@@ -416,8 +415,8 @@ class DownloadAndLoadHyVideoTextEncoder:
             max_length=256,
             text_encoder_precision=precision,
             tokenizer_type="llm",
-            prompt_template=prompt_template if use_prompt_templates else None,
-            prompt_template_video=prompt_template_video if use_prompt_templates else None,
+            prompt_template=prompt_template,
+            prompt_template_video=prompt_template_video,
             hidden_state_skip_layer=hidden_state_skip_layer,
             apply_final_norm=apply_final_norm,
             logger=log,
@@ -442,6 +441,7 @@ class HyVideoTextEncode:
             },
             "optional": {
                 "force_offload": ("BOOLEAN", {"default": True}),
+                 "use_prompt_templates": ("BOOLEAN", {"default": True, "tooltip": "Use the default prompt templates for the llm text encoder"}),
             }
         }
 
@@ -450,7 +450,7 @@ class HyVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, text_encoders, prompt, force_offload=True):
+    def process(self, text_encoders, prompt, force_offload=True, use_prompt_templates=True):
         device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
 
@@ -458,6 +458,8 @@ class HyVideoTextEncode:
         text_encoder_2 = text_encoders["text_encoder_2"]
 
         negative_prompt = None
+
+        text_encoder_1.use_template = use_prompt_templates
 
         def encode_prompt(self, prompt, negative_prompt, text_encoder):
             batch_size = 1
