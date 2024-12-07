@@ -38,25 +38,6 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """"""
 
-
-def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
-    """
-    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
-    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
-    """
-    std_text = noise_pred_text.std(
-        dim=list(range(1, noise_pred_text.ndim)), keepdim=True
-    )
-    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
-    # rescale the results from guidance (fixes overexposure)
-    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
-    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = (
-        guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
-    )
-    return noise_cfg
-
-
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -446,8 +427,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         negative_prompt_mask = prompt_embed_dict["negative_attention_mask"]
         prompt_embeds_2 = prompt_embed_dict["prompt_embeds_2"]
         negative_prompt_embeds_2 = prompt_embed_dict["negative_prompt_embeds_2"]
-        prompt_mask_2 = prompt_embed_dict["attention_mask_2"]
-        negative_prompt_mask_2 = prompt_embed_dict["negative_attention_mask_2"]
+        #prompt_mask_2 = prompt_embed_dict["attention_mask_2"]
+        #negative_prompt_mask_2 = prompt_embed_dict["negative_attention_mask_2"]
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -458,8 +439,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 prompt_mask = torch.cat([negative_prompt_mask, prompt_mask])
             if prompt_embeds_2 is not None:
                 prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
-            if prompt_mask_2 is not None:
-                prompt_mask_2 = torch.cat([negative_prompt_mask_2, prompt_mask_2])
+            #if prompt_mask_2 is not None:
+            #    prompt_mask_2 = torch.cat([negative_prompt_mask_2, prompt_mask_2])
         elif self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
             prompt_embeds = torch.cat(
                 [negative_prompt_embeds, prompt_embeds, prompt_embeds]
@@ -470,18 +451,18 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 prompt_embeds_2 = torch.cat(
                     [negative_prompt_embeds_2, prompt_embeds_2, prompt_embeds_2]
                 )
-            if prompt_mask_2 is not None:
-                prompt_mask_2 = torch.cat(
-                    [negative_prompt_mask_2, prompt_mask_2, prompt_mask_2]
-                )
+            #if prompt_mask_2 is not None:
+            #    prompt_mask_2 = torch.cat(
+            #        [negative_prompt_mask_2, prompt_mask_2, prompt_mask_2]
+            #    )
         elif self.do_spatio_temporal_guidance:
             prompt_embeds = torch.cat([prompt_embeds, prompt_embeds])
             if prompt_mask is not None:
                 prompt_mask = torch.cat([prompt_mask, prompt_mask])
             if prompt_embeds_2 is not None:
                 prompt_embeds_2 = torch.cat([prompt_embeds_2, prompt_embeds_2])
-            if prompt_mask_2 is not None:
-                prompt_mask_2 = torch.cat([prompt_mask_2, prompt_mask_2])
+            #if prompt_mask_2 is not None:
+            #    prompt_mask_2 = torch.cat([prompt_mask_2, prompt_mask_2])
             
 
         # 4. Prepare timesteps
@@ -617,14 +598,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                         noise_pred_text - noise_pred_perturb
                     )
 
-                if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
-                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(
-                        noise_pred,
-                        noise_pred_text,
-                        guidance_rescale=self.guidance_rescale,
-                    )
-
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(
                     noise_pred, t, latents, **extra_step_kwargs, return_dict=False
@@ -656,6 +629,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         #latents = (latents / 2 + 0.5).clamp(0, 1).cpu()
 
         # Offload all models
-        self.maybe_free_model_hooks()
+        #self.maybe_free_model_hooks()
 
         return latents

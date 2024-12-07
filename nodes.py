@@ -2,6 +2,7 @@ import os
 import torch
 import json
 from typing import List
+import gc
 from .utils import log, check_diffusers_version, print_memory
 from diffusers.video_processor import VideoProcessor
 
@@ -77,6 +78,8 @@ class HyVideoBlockSwap:
             "required": { 
                 "double_blocks_to_swap": ("INT", {"default": 20, "min": 0, "max": 20, "step": 1, "tooltip": "Number of double blocks to swap"}),
                 "single_blocks_to_swap": ("INT", {"default": 0, "min": 0, "max": 40, "step": 1, "tooltip": "Number of single blocks to swap"}),
+                "offload_txt_in": ("BOOLEAN", {"default": False, "tooltip": "Offload txt_in layer"}),
+                "offload_img_in": ("BOOLEAN", {"default": False, "tooltip": "Offload img_in layer"}),
             },
         }
     RETURN_TYPES = ("BLOCKSWAPARGS",)
@@ -275,7 +278,9 @@ class HyVideoModelLoader:
                 if compile_args["compile_final_layer"]:
                     transformer.final_layer = torch.compile(transformer.final_layer, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
 
-        
+        del sd
+        mm.soft_empty_cache()
+
         scheduler = FlowMatchDiscreteScheduler(
             shift=9.0,
             reverse=True,
@@ -333,10 +338,13 @@ class HyVideoVAELoader:
         model_path = folder_paths.get_full_path("vae", model_name)
         vae_sd = load_torch_file(model_path)
 
-        vae = AutoencoderKLCausal3D.from_config(vae_config).to(dtype).to(offload_device)
+        vae = AutoencoderKLCausal3D.from_config(vae_config)
         vae.load_state_dict(vae_sd)
+        del vae_sd
         vae.requires_grad_(False)
         vae.eval()
+        vae.to(device = device, dtype = dtype)
+        
         #compile
         if compile_args is not None:
             torch._dynamo.config.cache_size_limit = compile_args["dynamo_cache_size_limit"]
@@ -757,12 +765,20 @@ class HyVideoSampler:
                 if "single" not in name and "double" not in name:
                     param.data = param.data.to(device)
                 
-            transformer.block_swap(model["block_swap_args"]["double_blocks_to_swap"] , model["block_swap_args"]["single_blocks_to_swap"])
-            # for name, param in model["pipe"].transformer.named_parameters():
-            #     print(name, param.data.device)
-          
+            transformer.block_swap(
+                model["block_swap_args"]["double_blocks_to_swap"] - 1 , 
+                model["block_swap_args"]["single_blocks_to_swap"] - 1,
+                offload_txt_in = model["block_swap_args"]["offload_txt_in"],
+                offload_img_in = model["block_swap_args"]["offload_img_in"],
+            )
+
+            mm.soft_empty_cache()
+            gc.collect()
         elif model["manual_offloading"]:
             transformer.to(device)
+        
+        #for name, param in transformer.named_parameters():
+        #    print(name, param.data.device)
         
         out_latents = model["pipe"](
             num_inference_steps=steps,
@@ -789,11 +805,12 @@ class HyVideoSampler:
             torch.cuda.reset_peak_memory_stats(device)
         except:
             pass
-
+        
         if force_offload:
             if model["manual_offloading"]:
                 transformer.to(offload_device)
                 mm.soft_empty_cache()
+                gc.collect()
 
         return ({
             "samples": out_latents
@@ -820,6 +837,7 @@ class HyVideoDecode:
     def decode(self, vae, samples, enable_vae_tiling, temporal_tiling_sample_size):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
+        mm.soft_empty_cache()
         latents = samples["samples"]
         generator = torch.Generator(device=torch.device("cpu"))#.manual_seed(seed)
         vae.to(device)

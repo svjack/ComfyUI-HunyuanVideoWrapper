@@ -614,20 +614,28 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         )
         self.double_blocks_to_swap = 0
         self.single_blocks_to_swap = 0
+        self.offload_txt_in = False
+        self.offload_img_in = False
 
     # thanks @2kpr for the initial block swap code!
-    def block_swap(self, double_blocks_to_swap, single_blocks_to_swap):
+    def block_swap(self, double_blocks_to_swap, single_blocks_to_swap, offload_txt_in=False, offload_img_in=False):
         print(f"Swapping {double_blocks_to_swap} double blocks and {single_blocks_to_swap} single blocks")
         self.double_blocks_to_swap = double_blocks_to_swap
         self.single_blocks_to_swap = single_blocks_to_swap
+        self.offload_txt_in = offload_txt_in
+        self.offload_img_in = offload_img_in
         for b, block in enumerate(self.double_blocks):
-            if b < 0 or b > self.double_blocks_to_swap:
-                #mm.soft_empty_cache()
+            if b > self.double_blocks_to_swap:
+                print(f"Moving double_block {b} to main device")
                 block.to(self.main_device)
+            else:
+                print(f"Moving double_block {b} to offload_device")
+                block.to(self.offload_device)
         for b, block in enumerate(self.single_blocks):
-            if b < 0 or b > self.single_blocks_to_swap:
-                #mm.soft_empty_cache()
+            if b > self.single_blocks_to_swap:
                 block.to(self.main_device)
+            else:
+                block.to(self.offload_device)
 
     def enable_deterministic(self):
         for block in self.double_blocks:
@@ -683,6 +691,11 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
             vec = vec + self.guidance_in(guidance)
 
         # Embed image and text.
+        if self.offload_txt_in:
+            self.txt_in.to(self.main_device)
+        if self.offload_img_in:
+            self.img_in.to(self.main_device)
+
         img = self.img_in(img)
         if self.text_projection == "linear":
             txt = self.txt_in(txt)
@@ -692,6 +705,10 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
             raise NotImplementedError(
                 f"Unsupported text_projection: {self.text_projection}"
             )
+        if self.offload_txt_in:
+            self.txt_in.to(self.offload_device)
+        if self.offload_img_in:
+            self.img_in.to(self.offload_device)
 
         txt_seq_len = txt.shape[1]
         img_seq_len = img.shape[1]
@@ -718,7 +735,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         # --------------------- Pass through DiT blocks ------------------------
         for b, block in enumerate(self.double_blocks):
             if b <= self.double_blocks_to_swap and self.double_blocks_to_swap > 0:
-                #mm.soft_empty_cache()
+                #print(f"Moving double_block {b} to main device")
                 block.to(self.main_device)
             double_block_args = [
                 img,
@@ -734,7 +751,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
             img, txt = block(*double_block_args)
             if b <= self.double_blocks_to_swap and self.double_blocks_to_swap > 0:
-                #mm.soft_empty_cache()
+                #print(f"Moving double_block {b} to offload device")
                 block.to(self.offload_device, non_blocking=True)
 
         # Merge txt and img to pass through single stream blocks.
@@ -742,6 +759,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         if len(self.single_blocks) > 0:
             for b, block in enumerate(self.single_blocks):
                 if b <= self.single_blocks_to_swap and self.single_blocks_to_swap > 0:
+                    #print(f"Moving single_block {b} to main device")
                     #mm.soft_empty_cache()
                     block.to(self.main_device)
                 curr_stg_mode = stg_mode if b == stg_block_idx else None
@@ -760,6 +778,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
                 x = block(*single_block_args)
                 if b <= self.single_blocks_to_swap and self.single_blocks_to_swap > 0:
+                    #print(f"Moving single_block {b} to offload device")
                     #mm.soft_empty_cache()
                     block.to(self.offload_device, non_blocking=True)
 
