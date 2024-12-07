@@ -717,8 +717,8 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
         # --------------------- Pass through DiT blocks ------------------------
         for b, block in enumerate(self.double_blocks):
-            if b >= 0 and b <= self.double_blocks_to_swap:
-                mm.soft_empty_cache()
+            if b <= self.double_blocks_to_swap and self.double_blocks_to_swap > 0:
+                #mm.soft_empty_cache()
                 block.to(self.main_device)
             double_block_args = [
                 img,
@@ -733,7 +733,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
             ]
 
             img, txt = block(*double_block_args)
-            if b >= 0 and b <= self.double_blocks_to_swap:
+            if b <= self.double_blocks_to_swap and self.double_blocks_to_swap > 0:
                 #mm.soft_empty_cache()
                 block.to(self.offload_device, non_blocking=True)
 
@@ -741,8 +741,8 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         x = torch.cat((img, txt), 1)
         if len(self.single_blocks) > 0:
             for b, block in enumerate(self.single_blocks):
-                if b >= 0 and b <= self.single_blocks_to_swap:
-                    mm.soft_empty_cache()
+                if b <= self.single_blocks_to_swap and self.single_blocks_to_swap > 0:
+                    #mm.soft_empty_cache()
                     block.to(self.main_device)
                 curr_stg_mode = stg_mode if b == stg_block_idx else None
                 single_block_args = [
@@ -759,7 +759,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
                 ]
 
                 x = block(*single_block_args)
-                if b >= 0 and b <= self.single_blocks_to_swap:
+                if b <= self.single_blocks_to_swap and self.single_blocks_to_swap > 0:
                     #mm.soft_empty_cache()
                     block.to(self.offload_device, non_blocking=True)
 

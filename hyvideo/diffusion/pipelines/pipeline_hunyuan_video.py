@@ -21,12 +21,10 @@ from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 import torch
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
-from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import VaeImageProcessor
 
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
-    deprecate,
     logging,
     replace_example_docstring
 )
@@ -137,7 +135,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
     """
 
-    # model_cpu_offload_seq = "text_encoder->text_encoder_2->transformer->vae"
+    model_cpu_offload_seq = "transformer"
     # _optional_components = ["text_encoder_2"]
     # _exclude_from_cpu_offload = ["transformer"]
     # _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
@@ -353,6 +351,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         stg_mode: Optional[str] = None,
         stg_block_idx: Optional[int] = -1,
         stg_scale: Optional[float] = 0.0,
+        stg_start_percent: Optional[float] = 0.0,
+        stg_end_percent: Optional[float] = 1.0,
         **kwargs,
     ):
         r"""
@@ -538,16 +538,31 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
+                current_step_percentage = i / len(timesteps)
+                if self.do_spatio_temporal_guidance:
+                    if stg_start_percent <= current_step_percentage <= stg_end_percent:
+                        stg_enabled = True
+                        if self.do_classifier_free_guidance:
+                            latent_model_input = torch.cat([latents] * 3)
+                        else:
+                            latent_model_input = torch.cat([latents] * 2)
+                    else:
+                        stg_enabled = False
+                        stg_mode = None
+                        stg_block_idx = -1
+                        prompt_embeds = prompt_embeds[0].unsqueeze(0)
+                        prompt_mask = prompt_mask[0].unsqueeze(0)
+                        prompt_embeds_2 = prompt_embeds_2[0].unsqueeze(0)
+                        latent_model_input = latents
+                else:
+                    stg_enabled = False
+                    # expand the latents if we are doing classifier free guidance
+                    latent_model_input = (
                     torch.cat([latents] * 2)
-                    if self.do_classifier_free_guidance and not self.do_spatio_temporal_guidance
-                    else torch.cat([latents] * 3)
-                    if self.do_classifier_free_guidance and self.do_spatio_temporal_guidance
-                    else torch.cat([latents] * 2)
-                    if self.do_spatio_temporal_guidance
+                    if self.do_classifier_free_guidance
                     else latents
                 )
+
                 latent_model_input = self.scheduler.scale_model_input(
                     latent_model_input, t
                 )
@@ -596,7 +611,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     ) + self._stg_scale * (
                         noise_pred_text - noise_pred_perturb
                     )
-                elif self.do_spatio_temporal_guidance:
+                elif self.do_spatio_temporal_guidance and stg_enabled:
                     noise_pred_text, noise_pred_perturb = noise_pred.chunk(2)
                     noise_pred = noise_pred_text + self._stg_scale * (
                         noise_pred_text - noise_pred_perturb
