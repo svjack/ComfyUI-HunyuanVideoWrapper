@@ -135,7 +135,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
     """
 
-    model_cpu_offload_seq = "transformer"
+    #model_cpu_offload_seq = "transformer"
     # _optional_components = ["text_encoder_2"]
     # _exclude_from_cpu_offload = ["transformer"]
     # _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
