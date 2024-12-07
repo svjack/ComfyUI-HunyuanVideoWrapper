@@ -626,10 +626,10 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         self.offload_img_in = offload_img_in
         for b, block in enumerate(self.double_blocks):
             if b > self.double_blocks_to_swap:
-                print(f"Moving double_block {b} to main device")
+                #print(f"Moving double_block {b} to main device")
                 block.to(self.main_device)
             else:
-                print(f"Moving double_block {b} to offload_device")
+                #print(f"Moving double_block {b} to offload_device")
                 block.to(self.offload_device)
         for b, block in enumerate(self.single_blocks):
             if b > self.single_blocks_to_swap:
