@@ -115,8 +115,6 @@ class TextEncoder(nn.Module):
         output_key: Optional[str] = None,
         use_attention_mask: bool = True,
         input_max_length: Optional[int] = None,
-        prompt_template: Optional[dict] = None,
-        prompt_template_video: Optional[dict] = None,
         hidden_state_skip_layer: Optional[int] = None,
         apply_final_norm: bool = False,
         reproduce: bool = False,
@@ -137,42 +135,14 @@ class TextEncoder(nn.Module):
             tokenizer_path if tokenizer_path is not None else text_encoder_path
         )
         self.use_attention_mask = use_attention_mask
-        if prompt_template_video is not None:
-            assert (
-                use_attention_mask is True
-            ), "Attention mask is True required when training videos."
+        
         self.input_max_length = (
             input_max_length if input_max_length is not None else max_length
         )
-        self.prompt_template = prompt_template
-        self.prompt_template_video = prompt_template_video
         self.hidden_state_skip_layer = hidden_state_skip_layer
         self.apply_final_norm = apply_final_norm
         self.reproduce = reproduce
         self.logger = logger
-
-        self.use_template = self.prompt_template is not None
-        if self.use_template:
-            assert (
-                isinstance(self.prompt_template, dict)
-                and "template" in self.prompt_template
-            ), f"`prompt_template` must be a dictionary with a key 'template', got {self.prompt_template}"
-            assert "{}" in str(self.prompt_template["template"]), (
-                "`prompt_template['template']` must contain a placeholder `{}` for the input text, "
-                f"got {self.prompt_template['template']}"
-            )
-
-        self.use_video_template = self.prompt_template_video is not None
-        if self.use_video_template:
-            if self.prompt_template_video is not None:
-                assert (
-                    isinstance(self.prompt_template_video, dict)
-                    and "template" in self.prompt_template_video
-                ), f"`prompt_template_video` must be a dictionary with a key 'template', got {self.prompt_template_video}"
-            assert "{}" in str(self.prompt_template_video["template"]), (
-                "`prompt_template_video['template']` must contain a placeholder `{}` for the input text, "
-                f"got {self.prompt_template_video['template']}"
-            )
 
         if "t5" in text_encoder_type:
             self.output_key = output_key or "last_hidden_state"
@@ -222,7 +192,7 @@ class TextEncoder(nn.Module):
         else:
             raise TypeError(f"Unsupported template type: {type(template)}")
 
-    def text2tokens(self, text, data_type="image"):
+    def text2tokens(self, text, prompt_template):
         """
         Tokenize the input text.
 
@@ -230,22 +200,16 @@ class TextEncoder(nn.Module):
             text (str or list): Input text.
         """
         tokenize_input_type = "str"
-        if self.use_template:
-            if data_type == "image":
-                prompt_template = self.prompt_template["template"]
-            elif data_type == "video":
-                prompt_template = self.prompt_template_video["template"]
-            else:
-                raise ValueError(f"Unsupported data type: {data_type}")
+        if prompt_template is not None and self.text_encoder_type == "llm":
             if isinstance(text, (list, tuple)):
                 text = [
-                    self.apply_text_to_template(one_text, prompt_template)
+                    self.apply_text_to_template(one_text, prompt_template["template"])
                     for one_text in text
                 ]
                 if isinstance(text[0], list):
                     tokenize_input_type = "list"
             elif isinstance(text, str):
-                text = self.apply_text_to_template(text, prompt_template)
+                text = self.apply_text_to_template(text, prompt_template["template"])
                 if isinstance(text, list):
                     tokenize_input_type = "list"
             else:
@@ -284,7 +248,7 @@ class TextEncoder(nn.Module):
         do_sample=None,
         hidden_state_skip_layer=None,
         return_texts=False,
-        data_type="image",
+        prompt_template=None,
         device=None,
     ):
         """
@@ -326,13 +290,9 @@ class TextEncoder(nn.Module):
             last_hidden_state = outputs[self.output_key]
 
         # Remove hidden states of instruction tokens, only keep prompt tokens.
-        if self.use_template:
-            if data_type == "image":
-                crop_start = self.prompt_template.get("crop_start", -1)
-            elif data_type == "video":
-                crop_start = self.prompt_template_video.get("crop_start", -1)
-            else:
-                raise ValueError(f"Unsupported data type: {data_type}")
+        if prompt_template is not None and self.text_encoder_type == "llm":
+            crop_start = prompt_template.get("crop_start", -1)
+
             if crop_start > 0:
                 last_hidden_state = last_hidden_state[:, crop_start:]
                 attention_mask = (

@@ -472,14 +472,6 @@ class DownloadAndLoadHyVideoTextEncoder:
                 local_dir=base_path,
                 local_dir_use_symlinks=False,
             )
-        # prompt_template 
-        prompt_template = (
-            PROMPT_TEMPLATE["dit-llm-encode"]
-        )
-        # prompt_template_video
-        prompt_template_video = (
-            PROMPT_TEMPLATE["dit-llm-encode-video"]
-        )
        
         text_encoder = TextEncoder(
             text_encoder_path=base_path,
@@ -487,8 +479,6 @@ class DownloadAndLoadHyVideoTextEncoder:
             max_length=256,
             text_encoder_precision=precision,
             tokenizer_type="llm",
-            prompt_template=prompt_template,
-            prompt_template_video=prompt_template_video,
             hidden_state_skip_layer=hidden_state_skip_layer,
             apply_final_norm=apply_final_norm,
             logger=log,
@@ -504,7 +494,28 @@ class DownloadAndLoadHyVideoTextEncoder:
         }
        
         return (hyvid_text_encoders,)
-    
+
+class HyVideoCustomPromptTemplate:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "custom_prompt_template": ("STRING", {"default": f"{PROMPT_TEMPLATE['dit-llm-encode-video']["template"]}", "multiline": True}),
+            "crop_start": ("INT", {"default": PROMPT_TEMPLATE['dit-llm-encode-video']["crop_start"], "tooltip": "To cropt the system prompt"}),
+            },
+        }
+
+    RETURN_TYPES = ("PROMPT_TEMPLATE", )
+    RETURN_NAMES = ("hyvid_prompt_template",)
+    FUNCTION = "process"
+    CATEGORY = "HunyuanVideoWrapper"
+
+    def process(self, custom_prompt_template, crop_start):
+        prompt_template_dict = {
+            "template": custom_prompt_template,
+            "crop_start": crop_start,
+        }
+        return (prompt_template_dict,)
+        
 class HyVideoTextEncode:
     @classmethod
     def INPUT_TYPES(s):
@@ -515,7 +526,8 @@ class HyVideoTextEncode:
             },
             "optional": {
                 "force_offload": ("BOOLEAN", {"default": True}),
-                "prompt_template": (["video", "image", "disabled"], {"default": "video", "tooltip": "Use the default prompt templates for the llm text encoder"}),
+                "prompt_template": (["video", "image", "custom", "disabled"], {"default": "video", "tooltip": "Use the default prompt templates for the llm text encoder"}),
+                "custom_prompt_template": ("PROMPT_TEMPLATE", {"default": PROMPT_TEMPLATE["dit-llm-encode-video"], "multiline": True}),
             }
         }
 
@@ -524,7 +536,7 @@ class HyVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, text_encoders, prompt, force_offload=True, prompt_template="video"):
+    def process(self, text_encoders, prompt, force_offload=True, prompt_template="video", custom_prompt_template=None):
         device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
 
@@ -532,22 +544,39 @@ class HyVideoTextEncode:
         text_encoder_2 = text_encoders["text_encoder_2"]
 
         negative_prompt = None
-
-        text_encoder_1.use_template = True if prompt_template != "disabled" else False
+        
+        if prompt_template != "disabled":
+            if prompt_template == "custom":
+                prompt_template_dict = custom_prompt_template
+            elif prompt_template == "video":
+                prompt_template_dict = PROMPT_TEMPLATE["dit-llm-encode-video"]
+            elif prompt_template == "image":
+                prompt_template_dict = PROMPT_TEMPLATE["dit-llm-encode"]
+            else:
+                raise ValueError(f"Invalid prompt_template: {prompt_template_dict}")
+            assert (
+                isinstance(prompt_template_dict, dict)
+                and "template" in prompt_template_dict
+            ), f"`prompt_template` must be a dictionary with a key 'template', got {prompt_template_dict}"
+            assert "{}" in str(prompt_template_dict["template"]), (
+                "`prompt_template['template']` must contain a placeholder `{}` for the input text, "
+                f"got {prompt_template_dict['template']}"
+            )
+        else:
+            prompt_template_dict = None
 
         def encode_prompt(self, prompt, negative_prompt, text_encoder):
             batch_size = 1
             num_videos_per_prompt = 1
-            do_classifier_free_guidance = False
-            data_type = prompt_template
+            do_classifier_free_guidance = False # not implemented, for now we only have cfg distilled model
             
-            text_inputs = text_encoder.text2tokens(prompt, data_type=data_type)
+            text_inputs = text_encoder.text2tokens(prompt, prompt_template=prompt_template_dict)
 
-            prompt_outputs = text_encoder.encode(text_inputs, data_type=data_type, device=device)
+            prompt_outputs = text_encoder.encode(text_inputs, prompt_template=prompt_template_dict, device=device)
             prompt_embeds = prompt_outputs.hidden_state
             
             attention_mask = prompt_outputs.attention_mask
-            print("prompt attention_mask: ", attention_mask.shape)
+            log.info(f"{text_encoder.text_encoder_type} prompt attention_mask shape: {attention_mask.shape}, masked tokens: {attention_mask[0].sum().item()}")
             if attention_mask is not None:
                 attention_mask = attention_mask.to(device)
                 bs_embed, seq_len = attention_mask.shape
@@ -579,70 +608,70 @@ class HyVideoTextEncode:
                 )
 
             # get unconditional embeddings for classifier free guidance
-            if do_classifier_free_guidance:
-                uncond_tokens: List[str]
-                if negative_prompt is None:
-                    uncond_tokens = [""] * batch_size
-                elif prompt is not None and type(prompt) is not type(negative_prompt):
-                    raise TypeError(
-                        f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-                        f" {type(prompt)}."
-                    )
-                elif isinstance(negative_prompt, str):
-                    uncond_tokens = [negative_prompt]
-                elif batch_size != len(negative_prompt):
-                    raise ValueError(
-                        f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-                        f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-                        " the batch size of `prompt`."
-                    )
-                else:
-                    uncond_tokens = negative_prompt
+            # if do_classifier_free_guidance:
+            #     uncond_tokens: List[str]
+            #     if negative_prompt is None:
+            #         uncond_tokens = [""] * batch_size
+            #     elif prompt is not None and type(prompt) is not type(negative_prompt):
+            #         raise TypeError(
+            #             f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+            #             f" {type(prompt)}."
+            #         )
+            #     elif isinstance(negative_prompt, str):
+            #         uncond_tokens = [negative_prompt]
+            #     elif batch_size != len(negative_prompt):
+            #         raise ValueError(
+            #             f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+            #             f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+            #             " the batch size of `prompt`."
+            #         )
+            #     else:
+            #         uncond_tokens = negative_prompt
 
-                # max_length = prompt_embeds.shape[1]
-                uncond_input = text_encoder.text2tokens(uncond_tokens, data_type=data_type)
+            #     # max_length = prompt_embeds.shape[1]
+            #     uncond_input = text_encoder.text2tokens(uncond_tokens, data_type=data_type)
 
-                negative_prompt_outputs = text_encoder.encode(
-                    uncond_input, data_type=data_type, device=device
-                )
-                negative_prompt_embeds = negative_prompt_outputs.hidden_state
+            #     negative_prompt_outputs = text_encoder.encode(
+            #         uncond_input, data_type=data_type, device=device
+            #     )
+            #     negative_prompt_embeds = negative_prompt_outputs.hidden_state
 
-                negative_attention_mask = negative_prompt_outputs.attention_mask
-                if negative_attention_mask is not None:
-                    negative_attention_mask = negative_attention_mask.to(device)
-                    _, seq_len = negative_attention_mask.shape
-                    negative_attention_mask = negative_attention_mask.repeat(
-                        1, num_videos_per_prompt
-                    )
-                    negative_attention_mask = negative_attention_mask.view(
-                        batch_size * num_videos_per_prompt, seq_len
-                    )
-            else:
-                negative_prompt_embeds = None
-                negative_attention_mask = None
+            #     negative_attention_mask = negative_prompt_outputs.attention_mask
+            #     if negative_attention_mask is not None:
+            #         negative_attention_mask = negative_attention_mask.to(device)
+            #         _, seq_len = negative_attention_mask.shape
+            #         negative_attention_mask = negative_attention_mask.repeat(
+            #             1, num_videos_per_prompt
+            #         )
+            #         negative_attention_mask = negative_attention_mask.view(
+            #             batch_size * num_videos_per_prompt, seq_len
+            #         )
+            # else:
+            negative_prompt_embeds = None
+            negative_attention_mask = None
 
-            if do_classifier_free_guidance:
-                # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-                seq_len = negative_prompt_embeds.shape[1]
+            # if do_classifier_free_guidance:
+            #     # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
+            #     seq_len = negative_prompt_embeds.shape[1]
 
-                negative_prompt_embeds = negative_prompt_embeds.to(
-                    dtype=prompt_embeds_dtype, device=device
-                )
+            #     negative_prompt_embeds = negative_prompt_embeds.to(
+            #         dtype=prompt_embeds_dtype, device=device
+            #     )
 
-                if negative_prompt_embeds.ndim == 2:
-                    negative_prompt_embeds = negative_prompt_embeds.repeat(
-                        1, num_videos_per_prompt
-                    )
-                    negative_prompt_embeds = negative_prompt_embeds.view(
-                        batch_size * num_videos_per_prompt, -1
-                    )
-                else:
-                    negative_prompt_embeds = negative_prompt_embeds.repeat(
-                        1, num_videos_per_prompt, 1
-                    )
-                    negative_prompt_embeds = negative_prompt_embeds.view(
-                        batch_size * num_videos_per_prompt, seq_len, -1
-                    )
+            #     if negative_prompt_embeds.ndim == 2:
+            #         negative_prompt_embeds = negative_prompt_embeds.repeat(
+            #             1, num_videos_per_prompt
+            #         )
+            #         negative_prompt_embeds = negative_prompt_embeds.view(
+            #             batch_size * num_videos_per_prompt, -1
+            #         )
+            #     else:
+            #         negative_prompt_embeds = negative_prompt_embeds.repeat(
+            #             1, num_videos_per_prompt, 1
+            #         )
+            #         negative_prompt_embeds = negative_prompt_embeds.view(
+            #             batch_size * num_videos_per_prompt, seq_len, -1
+            #         )
 
             return (
                 prompt_embeds,
@@ -995,6 +1024,7 @@ NODE_CLASS_MAPPINGS = {
     "HyVideoBlockSwap": HyVideoBlockSwap,
     "HyVideoTorchCompileSettings": HyVideoTorchCompileSettings,
     "HyVideoSTG": HyVideoSTG,
+    "HyVideoCustomPromptTemplate": HyVideoCustomPromptTemplate,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoSampler": "HunyuanVideo Sampler",
@@ -1007,4 +1037,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoBlockSwap": "HunyuanVideo BlockSwap",
     "HyVideoTorchCompileSettings": "HunyuanVideo Torch Compile Settings",
     "HyVideoSTG": "HunyuanVideo STG",
+    "HyVideoCustomPromptTemplate": "HunyuanVideo Custom Prompt Template",
     }
