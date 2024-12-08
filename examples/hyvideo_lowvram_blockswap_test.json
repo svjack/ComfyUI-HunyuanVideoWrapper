@@ -1,78 +1,7 @@
 {
-  "last_node_id": 35,
-  "last_link_id": 43,
+  "last_node_id": 40,
+  "last_link_id": 44,
   "nodes": [
-    {
-      "id": 30,
-      "type": "HyVideoTextEncode",
-      "pos": [
-        203,
-        247
-      ],
-      "size": [
-        400,
-        200
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "text_encoders",
-          "type": "HYVIDTEXTENCODER",
-          "link": 35
-        }
-      ],
-      "outputs": [
-        {
-          "name": "hyvid_embeds",
-          "type": "HYVIDEMBEDS",
-          "links": [
-            36
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoTextEncode"
-      },
-      "widgets_values": [
-        "high quality anime style movie featuring a wolf in a forest",
-        "bad quality video"
-      ]
-    },
-    {
-      "id": 16,
-      "type": "DownloadAndLoadHyVideoTextEncoder",
-      "pos": [
-        -310,
-        248
-      ],
-      "size": [
-        441,
-        106
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "hyvid_text_encoder",
-          "type": "HYVIDTEXTENCODER",
-          "links": [
-            35
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DownloadAndLoadHyVideoTextEncoder"
-      },
-      "widgets_values": [
-        "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
-        "openai/clip-vit-large-patch14",
-        "fp16"
-      ]
-    },
     {
       "id": 7,
       "type": "HyVideoVAELoader",
@@ -85,7 +14,7 @@
         82
       ],
       "flags": {},
-      "order": 1,
+      "order": 0,
       "mode": 0,
       "inputs": [
         {
@@ -114,6 +43,225 @@
       ]
     },
     {
+      "id": 3,
+      "type": "HyVideoSampler",
+      "pos": [
+        668,
+        -62
+      ],
+      "size": [
+        315,
+        334
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "HYVIDEOMODEL",
+          "link": 2
+        },
+        {
+          "name": "hyvid_embeds",
+          "type": "HYVIDEMBEDS",
+          "link": 36
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "stg_args",
+          "type": "STGARGS",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            4
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoSampler"
+      },
+      "widgets_values": [
+        512,
+        512,
+        33,
+        20,
+        6,
+        9,
+        2,
+        "fixed",
+        1,
+        1
+      ]
+    },
+    {
+      "id": 35,
+      "type": "HyVideoBlockSwap",
+      "pos": [
+        -351,
+        -44
+      ],
+      "size": [
+        315,
+        130
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "block_swap_args",
+          "type": "BLOCKSWAPARGS",
+          "links": [
+            43
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoBlockSwap"
+      },
+      "widgets_values": [
+        20,
+        0,
+        true,
+        true
+      ]
+    },
+    {
+      "id": 16,
+      "type": "DownloadAndLoadHyVideoTextEncoder",
+      "pos": [
+        -300,
+        380
+      ],
+      "size": [
+        441,
+        178
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "hyvid_text_encoder",
+          "type": "HYVIDTEXTENCODER",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadHyVideoTextEncoder"
+      },
+      "widgets_values": [
+        "Kijai/llava-llama-3-8b-text-encoder-tokenizer",
+        "openai/clip-vit-large-patch14",
+        "fp16",
+        false,
+        2,
+        "bnb_nf4"
+      ]
+    },
+    {
+      "id": 30,
+      "type": "HyVideoTextEncode",
+      "pos": [
+        210,
+        380
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "text_encoders",
+          "type": "HYVIDTEXTENCODER",
+          "link": 35
+        }
+      ],
+      "outputs": [
+        {
+          "name": "hyvid_embeds",
+          "type": "HYVIDEMBEDS",
+          "links": [
+            36
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoTextEncode"
+      },
+      "widgets_values": [
+        "high quality anime style movie featuring a wolf in a forest",
+        "bad quality video",
+        "video"
+      ]
+    },
+    {
+      "id": 36,
+      "type": "Note",
+      "pos": [
+        -140,
+        600
+      ],
+      "size": [
+        262.6133117675781,
+        105.17330932617188
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "bnb_nf4 requires bitsandbytes installed, it is necessary if you don't have VRAM to run the text encoding, it will not affect VRAM usage during video sampling"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 38,
+      "type": "Note",
+      "pos": [
+        241.49647521972656,
+        163.09042358398438
+      ],
+      "size": [
+        313.94659423828125,
+        76.57331085205078
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "If you have sageattention working, use that for fastest sampling."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
       "id": 1,
       "type": "HyVideoModelLoader",
       "pos": [
@@ -125,7 +273,7 @@
         178
       ],
       "flags": {},
-      "order": 4,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -163,35 +311,131 @@
       ]
     },
     {
-      "id": 35,
-      "type": "HyVideoBlockSwap",
+      "id": 37,
+      "type": "Note",
       "pos": [
-        -351,
-        -44
+        -321.4975280761719,
+        -211.55799865722656
       ],
       "size": [
-        315,
-        82
+        262.6133117675781,
+        105.17330932617188
       ],
       "flags": {},
-      "order": 2,
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "To further reduce VRAM usage, you can also enable swapping for up to 40 single blocks. More you swap, slower it gets though."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 39,
+      "type": "HyVideoTorchCompileSettings",
+      "pos": [
+        -353.23699951171875,
+        -576.843017578125
+      ],
+      "size": [
+        441,
+        274
+      ],
+      "flags": {},
+      "order": 6,
       "mode": 0,
       "inputs": [],
       "outputs": [
         {
-          "name": "block_swap_args",
-          "type": "BLOCKSWAPARGS",
-          "links": [
-            43
-          ]
+          "name": "torch_compile_args",
+          "type": "COMPILEARGS",
+          "links": []
         }
       ],
       "properties": {
-        "Node name for S&R": "HyVideoBlockSwap"
+        "Node name for S&R": "HyVideoTorchCompileSettings"
       },
       "widgets_values": [
-        20,
-        0
+        "inductor",
+        false,
+        "default",
+        false,
+        64,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    {
+      "id": 40,
+      "type": "Note",
+      "pos": [
+        113.16300201416016,
+        -577.575927734375
+      ],
+      "size": [
+        262.6133117675781,
+        105.17330932617188
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "If you have working Triton installation, compilation can further reduce VRAM use, granted you can run the actual compilation process. To enable compilation, connect this to the model loader"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 5,
+      "type": "HyVideoDecode",
+      "pos": [
+        920,
+        -279
+      ],
+      "size": [
+        345.4285888671875,
+        102
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            42
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoDecode"
+      },
+      "widgets_values": [
+        true,
+        4
       ]
     },
     {
@@ -206,7 +450,7 @@
         310
       ],
       "flags": {},
-      "order": 7,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -244,7 +488,7 @@
         "Node name for S&R": "VHS_VideoCombine"
       },
       "widgets_values": {
-        "frame_rate": 16,
+        "frame_rate": 24,
         "loop_count": 0,
         "filename_prefix": "HunyuanVideo",
         "format": "video/h264-mp4",
@@ -252,7 +496,7 @@
         "crf": 19,
         "save_metadata": true,
         "pingpong": false,
-        "save_output": false,
+        "save_output": true,
         "videopreview": {
           "hidden": false,
           "paused": false,
@@ -266,108 +510,6 @@
           "muted": false
         }
       }
-    },
-    {
-      "id": 5,
-      "type": "HyVideoDecode",
-      "pos": [
-        920,
-        -279
-      ],
-      "size": [
-        345.4285888671875,
-        102
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 6
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 4
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            42
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoDecode"
-      },
-      "widgets_values": [
-        true,
-        8
-      ]
-    },
-    {
-      "id": 3,
-      "type": "HyVideoSampler",
-      "pos": [
-        668,
-        -62
-      ],
-      "size": [
-        315,
-        314
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model",
-          "type": "HYVIDEOMODEL",
-          "link": 2
-        },
-        {
-          "name": "hyvid_embeds",
-          "type": "HYVIDEMBEDS",
-          "link": 36
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "links": [
-            4
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoSampler"
-      },
-      "widgets_values": [
-        512,
-        512,
-        33,
-        20,
-        6,
-        9,
-        2,
-        "fixed",
-        1,
-        1
-      ]
     }
   ],
   "links": [
@@ -432,10 +574,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.9090909090909091,
+      "scale": 0.7513148009015777,
       "offset": [
-        799.6119664395361,
-        503.44341993174794
+        856.2226738131614,
+        635.642485451872
       ]
     }
   },
