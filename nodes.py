@@ -499,7 +499,7 @@ class HyVideoCustomPromptTemplate:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
-            "custom_prompt_template": ("STRING", {"default": f"{PROMPT_TEMPLATE['dit-llm-encode-video']["template"]}", "multiline": True}),
+            "custom_prompt_template": ("STRING", {"default": f"{PROMPT_TEMPLATE['dit-llm-encode-video']['template']}", "multiline": True}),
             "crop_start": ("INT", {"default": PROMPT_TEMPLATE['dit-llm-encode-video']["crop_start"], "tooltip": "To cropt the system prompt"}),
             },
         }
