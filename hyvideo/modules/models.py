@@ -612,14 +612,14 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
             get_activation_layer("silu"),
             **factory_kwargs,
         )
-        self.double_blocks_to_swap = 0
-        self.single_blocks_to_swap = 0
+        self.double_blocks_to_swap = -1
+        self.single_blocks_to_swap = -1
         self.offload_txt_in = False
         self.offload_img_in = False
 
     # thanks @2kpr for the initial block swap code!
     def block_swap(self, double_blocks_to_swap, single_blocks_to_swap, offload_txt_in=False, offload_img_in=False):
-        print(f"Swapping {double_blocks_to_swap} double blocks and {single_blocks_to_swap} single blocks")
+        print(f"Swapping {double_blocks_to_swap + 1} double blocks and {single_blocks_to_swap + 1} single blocks")
         self.double_blocks_to_swap = double_blocks_to_swap
         self.single_blocks_to_swap = single_blocks_to_swap
         self.offload_txt_in = offload_txt_in
@@ -734,7 +734,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         freqs_cis = (freqs_cos, freqs_sin) if freqs_cos is not None else None
         # --------------------- Pass through DiT blocks ------------------------
         for b, block in enumerate(self.double_blocks):
-            if b <= self.double_blocks_to_swap and self.double_blocks_to_swap > 0:
+            if b <= self.double_blocks_to_swap and self.double_blocks_to_swap >= 0:
                 #print(f"Moving double_block {b} to main device")
                 block.to(self.main_device)
             double_block_args = [
@@ -750,7 +750,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
             ]
 
             img, txt = block(*double_block_args)
-            if b <= self.double_blocks_to_swap and self.double_blocks_to_swap > 0:
+            if b <= self.double_blocks_to_swap and self.double_blocks_to_swap >= 0:
                 #print(f"Moving double_block {b} to offload device")
                 block.to(self.offload_device, non_blocking=True)
 
@@ -758,7 +758,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         x = torch.cat((img, txt), 1)
         if len(self.single_blocks) > 0:
             for b, block in enumerate(self.single_blocks):
-                if b <= self.single_blocks_to_swap and self.single_blocks_to_swap > 0:
+                if b <= self.single_blocks_to_swap and self.single_blocks_to_swap >= 0:
                     #print(f"Moving single_block {b} to main device")
                     #mm.soft_empty_cache()
                     block.to(self.main_device)
@@ -777,7 +777,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
                 ]
 
                 x = block(*single_block_args)
-                if b <= self.single_blocks_to_swap and self.single_blocks_to_swap > 0:
+                if b <= self.single_blocks_to_swap and self.single_blocks_to_swap >= 0:
                     #print(f"Moving single_block {b} to offload device")
                     #mm.soft_empty_cache()
                     block.to(self.offload_device, non_blocking=True)
