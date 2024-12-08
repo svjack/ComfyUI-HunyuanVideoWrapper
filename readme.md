@@ -4,7 +4,7 @@
 
 # Update
 
-Scaled dot product attention (sdpa) should now be working, sageattention is still recommended for speed, but should not be necessary anymore making installation much easier.
+Scaled dot product attention (sdpa) should now be working (only tested on Windows, torch 2.5.1+cu124 on 4090), sageattention is still recommended for speed, but should not be necessary anymore making installation much easier.
 
 Vid2vid test:
 [source video](https://www.pexels.com/video/a-4x4-vehicle-speeding-on-a-dirt-road-during-a-competition-15604814/)
