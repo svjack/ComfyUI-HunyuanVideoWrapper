@@ -20,3 +20,5 @@ def print_memory(device):
     log.info(f"Allocated memory: {memory=:.3f} GB")
     log.info(f"Max allocated memory: {max_memory=:.3f} GB")
     log.info(f"Max reserved memory: {max_reserved=:.3f} GB")
+    #memory_summary = torch.cuda.memory_summary(device=device, abbreviated=False)
+    #log.info(f"Memory Summary:\n{memory_summary}")

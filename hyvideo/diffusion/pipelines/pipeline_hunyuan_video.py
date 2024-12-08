@@ -21,7 +21,6 @@ from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 import torch
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
-from diffusers.image_processor import VaeImageProcessor
 
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
@@ -145,7 +144,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             scheduler=scheduler
         )
         self.vae_scale_factor = 8
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def prepare_extra_func_kwargs(self, func, kwargs):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature

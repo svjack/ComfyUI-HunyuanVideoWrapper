@@ -528,6 +528,7 @@ class HyVideoTextEncode:
                 "force_offload": ("BOOLEAN", {"default": True}),
                 "prompt_template": (["video", "image", "custom", "disabled"], {"default": "video", "tooltip": "Use the default prompt templates for the llm text encoder"}),
                 "custom_prompt_template": ("PROMPT_TEMPLATE", {"default": PROMPT_TEMPLATE["dit-llm-encode-video"], "multiline": True}),
+                "clip_l": ("CLIP", {"tooltip": "Use comfy clip model instead, in this case the text encoder loader's clip_l should be disabled"}),
             }
         }
 
@@ -536,12 +537,15 @@ class HyVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, text_encoders, prompt, force_offload=True, prompt_template="video", custom_prompt_template=None):
+    def process(self, text_encoders, prompt, force_offload=True, prompt_template="video", custom_prompt_template=None, clip_l=None):
         device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
 
         text_encoder_1 = text_encoders["text_encoder"]
-        text_encoder_2 = text_encoders["text_encoder_2"]
+        if clip_l is None:
+            text_encoder_2 = text_encoders["text_encoder_2"]
+        else:
+            text_encoder_2 = None
 
         negative_prompt = None
         
@@ -585,27 +589,20 @@ class HyVideoTextEncode:
                     bs_embed * num_videos_per_prompt, seq_len
                 )
 
-            if text_encoder is not None:
-                prompt_embeds_dtype = text_encoder.dtype
-            elif self.transformer is not None:
-                prompt_embeds_dtype = self.transformer.dtype
-            else:
-                prompt_embeds_dtype = prompt_embeds.dtype
+            prompt_embeds = prompt_embeds.to(dtype=text_encoder.dtype, device=device)
 
-            prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
-
-            if prompt_embeds.ndim == 2:
-                bs_embed, _ = prompt_embeds.shape
-                # duplicate text embeddings for each generation per prompt, using mps friendly method
-                prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt)
-                prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, -1)
-            else:
-                bs_embed, seq_len, _ = prompt_embeds.shape
-                # duplicate text embeddings for each generation per prompt, using mps friendly method
-                prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-                prompt_embeds = prompt_embeds.view(
-                    bs_embed * num_videos_per_prompt, seq_len, -1
-                )
+            # if prompt_embeds.ndim == 2:
+            #     bs_embed, _ = prompt_embeds.shape
+            #     # duplicate text embeddings for each generation per prompt, using mps friendly method
+            #     prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt)
+            #     prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, -1)
+            # else:
+            #     bs_embed, seq_len, _ = prompt_embeds.shape
+            #     # duplicate text embeddings for each generation per prompt, using mps friendly method
+            #     prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
+            #     prompt_embeds = prompt_embeds.view(
+            #         bs_embed * num_videos_per_prompt, seq_len, -1
+            #     )
 
             # get unconditional embeddings for classifier free guidance
             # if do_classifier_free_guidance:
@@ -691,6 +688,17 @@ class HyVideoTextEncode:
             if force_offload:
                 text_encoder_2.to(offload_device)
                 mm.soft_empty_cache()
+        elif clip_l is not None:
+            clip_l.cond_stage_model.to(device)
+            tokens = clip_l.tokenize(prompt, return_word_ids=True)
+            prompt_embeds_2 = clip_l.encode_from_tokens(tokens, return_pooled=True, return_dict=False)[1]
+            prompt_embeds_2 = prompt_embeds_2.to(device=device)
+
+            negative_prompt_embeds_2, attention_mask_2, negative_attention_mask_2 = None, None, None
+          
+            if force_offload:
+                clip_l.cond_stage_model.to(offload_device)
+                mm.soft_empty_cache()
         else:
             prompt_embeds_2 = None
             negative_prompt_embeds_2 = None
@@ -741,9 +749,6 @@ class HyVideoSampler:
     CATEGORY = "HunyuanVideoWrapper"
 
     def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, seed, width, height, num_frames, samples=None, denoise_strength=1.0, force_offload=True, stg_args=None):
-        mm.unload_all_models()
-        mm.soft_empty_cache()
-
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         dtype = model["dtype"]
@@ -756,11 +761,6 @@ class HyVideoSampler:
             )
         
         generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
-
-        try:
-            torch.cuda.reset_peak_memory_stats(device)
-        except:
-            pass
 
         if width <= 0 or height <= 0 or num_frames <= 0:
             raise ValueError(
@@ -806,7 +806,16 @@ class HyVideoSampler:
             gc.collect()
         elif model["manual_offloading"]:
             transformer.to(device)
+
+        mm.unload_all_models()
+        mm.soft_empty_cache()
+        gc.collect()
         
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+        except:
+            pass
+                
         #for name, param in transformer.named_parameters():
         #    print(name, param.data.device)
         

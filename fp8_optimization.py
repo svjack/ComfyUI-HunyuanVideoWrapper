@@ -7,32 +7,24 @@ def fp8_linear_forward(cls, original_dtype, input):
     weight_dtype = cls.weight.dtype
     if weight_dtype in [torch.float8_e4m3fn, torch.float8_e5m2]:
         if len(input.shape) == 3:
-            if weight_dtype == torch.float8_e4m3fn:
-                inn = input.reshape(-1, input.shape[2]).to(torch.float8_e5m2)
-            else:
-                inn = input.reshape(-1, input.shape[2]).to(torch.float8_e4m3fn)
+            target_dtype = torch.float8_e5m2 if weight_dtype == torch.float8_e4m3fn else torch.float8_e4m3fn
+            inn = input.reshape(-1, input.shape[2]).to(target_dtype)
             w = cls.weight.t()
 
-            scale_weight = torch.ones((1), device=input.device, dtype=torch.float32)
-            scale_input = scale_weight
-
+            scale = torch.ones((1), device=input.device, dtype=torch.float32)
             bias = cls.bias.to(original_dtype) if cls.bias is not None else None
-            out_dtype = original_dtype
 
             if bias is not None:
-                o = torch._scaled_mm(inn, w, out_dtype=out_dtype, bias=bias, scale_a=scale_input, scale_b=scale_weight)
+                o = torch._scaled_mm(inn, w, out_dtype=original_dtype, bias=bias, scale_a=scale, scale_b=scale)
             else:
-                o = torch._scaled_mm(inn, w, out_dtype=out_dtype, scale_a=scale_input, scale_b=scale_weight)
+                o = torch._scaled_mm(inn, w, out_dtype=original_dtype, scale_a=scale, scale_b=scale)
 
             if isinstance(o, tuple):
                 o = o[0]
 
             return o.reshape((-1, input.shape[1], cls.weight.shape[0]))
         else:
-            cls.to(original_dtype)
-            out = cls.original_forward(input.to(original_dtype))
-            cls.to(original_dtype)
-            return out
+            return cls.original_forward(input.to(original_dtype))
     else:
         return cls.original_forward(input)
 

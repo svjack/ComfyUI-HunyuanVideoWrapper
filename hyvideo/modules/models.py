@@ -706,9 +706,9 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
                 f"Unsupported text_projection: {self.text_projection}"
             )
         if self.offload_txt_in:
-            self.txt_in.to(self.offload_device)
+            self.txt_in.to(self.offload_device, non_blocking=True)
         if self.offload_img_in:
-            self.img_in.to(self.offload_device)
+            self.img_in.to(self.offload_device, non_blocking=True)
 
         txt_seq_len = txt.shape[1]
         img_seq_len = img.shape[1]
