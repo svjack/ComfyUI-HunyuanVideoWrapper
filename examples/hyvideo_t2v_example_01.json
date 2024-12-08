@@ -146,7 +146,7 @@
       },
       "widgets_values": [
         "hyvid\\hunyuan_video_vae_bf16.safetensors",
-        "fp16"
+        "bf16"
       ]
     },
     {

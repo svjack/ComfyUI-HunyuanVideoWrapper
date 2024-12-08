@@ -21,6 +21,7 @@ def load_text_encoder(
     text_encoder_path=None,
     logger=None,
     device=None,
+    dtype=None,
     quantization_config=None,
 ):
     if text_encoder_path is None:
@@ -45,12 +46,12 @@ def load_text_encoder(
     # from_pretrained will ensure that the model is in eval mode.
 
     if text_encoder_precision is not None and quantization_config is None:
-        text_encoder = text_encoder.to(dtype=PRECISION_TO_TYPE[text_encoder_precision])
+        text_encoder = text_encoder.to(dtype)
 
     text_encoder.requires_grad_(False)
 
     if logger is not None:
-        logger.info(f"Text encoder to dtype: {text_encoder.dtype}")
+        logger.info(f"Text encoder to dtype: {dtype}")
 
     if device is not None and quantization_config is None:
         text_encoder = text_encoder.to(device)
@@ -121,6 +122,7 @@ class TextEncoder(nn.Module):
         reproduce: bool = False,
         logger=None,
         device=None,
+        dtype=torch.float16,
         quantization_config=None,
     ):
         super().__init__()
@@ -187,6 +189,7 @@ class TextEncoder(nn.Module):
             text_encoder_path=self.model_path,
             logger=self.logger,
             device=device,
+            dtype=dtype,
             quantization_config=quantization_config,
         )
         self.dtype = self.model.dtype

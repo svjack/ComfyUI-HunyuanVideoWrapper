@@ -422,7 +422,7 @@ class DownloadAndLoadHyVideoTextEncoder:
     CATEGORY = "HunyuanVideoWrapper"
     DESCRIPTION = "Loads Hunyuan text_encoder model from 'ComfyUI/models/LLM'"
 
-    def loadmodel(self, llm_model, clip_model, precision, apply_final_norm=False, hidden_state_skip_layer=2, use_prompt_templates=True, quantization="disabled"):
+    def loadmodel(self, llm_model, clip_model, precision, apply_final_norm=False, hidden_state_skip_layer=2, quantization="disabled"):
         
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -493,6 +493,7 @@ class DownloadAndLoadHyVideoTextEncoder:
             apply_final_norm=apply_final_norm,
             logger=log,
             device=device,
+            dtype=dtype,
             quantization_config=quantization_config
         )
        
@@ -514,7 +515,7 @@ class HyVideoTextEncode:
             },
             "optional": {
                 "force_offload": ("BOOLEAN", {"default": True}),
-                 "use_prompt_templates": ("BOOLEAN", {"default": True, "tooltip": "Use the default prompt templates for the llm text encoder"}),
+                "prompt_template": (["video", "image", "disabled"], {"default": "video", "tooltip": "Use the default prompt templates for the llm text encoder"}),
             }
         }
 
@@ -523,7 +524,7 @@ class HyVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, text_encoders, prompt, force_offload=True, use_prompt_templates=True):
+    def process(self, text_encoders, prompt, force_offload=True, prompt_template="video"):
         device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
 
@@ -532,13 +533,13 @@ class HyVideoTextEncode:
 
         negative_prompt = None
 
-        text_encoder_1.use_template = use_prompt_templates
+        text_encoder_1.use_template = True if prompt_template != "disabled" else False
 
         def encode_prompt(self, prompt, negative_prompt, text_encoder):
             batch_size = 1
             num_videos_per_prompt = 1
             do_classifier_free_guidance = False
-            data_type = "video"
+            data_type = prompt_template
             
             text_inputs = text_encoder.text2tokens(prompt, data_type=data_type)
 
@@ -874,14 +875,18 @@ class HyVideoDecode:
 
         vae.to(offload_device)
         mm.soft_empty_cache()
-       
-        video_processor = VideoProcessor(vae_scale_factor=8)
-        video_processor.config.do_resize = False
 
-        video = video_processor.postprocess_video(video=video, output_type="pt")
-        video = video[0].permute(0, 2, 3, 1).cpu().float()
+        if len(video.shape) == 5:
+            video_processor = VideoProcessor(vae_scale_factor=8)
+            video_processor.config.do_resize = False
 
-        return (video,)
+            video = video_processor.postprocess_video(video=video, output_type="pt")
+            out = video[0].permute(0, 2, 3, 1).cpu().float()
+        else:
+            out = (video / 2 + 0.5).clamp(0, 1)
+            out = out.permute(0, 2, 3, 1).cpu().float()
+
+        return (out,)
     
 class HyVideoEncode:
     @classmethod
