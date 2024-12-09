@@ -31,7 +31,10 @@ Files go to `ComfyUI/models/LLM/llava-llama-3-8b-text-encoder-tokenizer`
 
 Clip text encoder (has autodownload)
 
-For now using the original https://huggingface.co/openai/clip-vit-large-patch14, files (only need the .safetensor from the weights and all the config files) go to:
+Either use any Clip_L model supported by ComfyUI by disabling the clip_model in the text encoder loader and plugging in ClipLoader to the text encoder node, or 
+allow the autodownloader to fetch the original clip model from:
+
+https://huggingface.co/openai/clip-vit-large-patch14, (only need the .safetensor from the weights, and all the config files) to:
 
 `ComfyUI/models/clip/clip-vit-large-patch14`
 
