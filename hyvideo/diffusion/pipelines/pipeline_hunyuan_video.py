@@ -467,6 +467,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         extra_set_timesteps_kwargs = self.prepare_extra_func_kwargs(
             self.scheduler.set_timesteps, {"n_tokens": n_tokens}
         )
+        if hasattr(self.scheduler, "set_begin_index") and denoise_strength == 1.0:
+            self.scheduler.set_begin_index(begin_index=0)
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
