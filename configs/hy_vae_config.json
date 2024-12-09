@@ -19,7 +19,7 @@
   "layers_per_block": 2,
   "norm_num_groups": 32,
   "out_channels": 3,
-  "sample_size": 256,
+  "tile_sample_min_size": 256,
   "sample_tsize": 64,
   "up_block_types": [
     "UpDecoderBlockCausal3D",
@@ -29,6 +29,5 @@
   ],
   "scaling_factor": 0.476986,
   "time_compression_ratio": 4,
-  "mid_block_add_attention": true,
-  "mid_block_causal_attn": true
+  "mid_block_add_attention": true
 }

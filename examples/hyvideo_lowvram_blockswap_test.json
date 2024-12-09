@@ -195,6 +195,18 @@
           "name": "text_encoders",
           "type": "HYVIDTEXTENCODER",
           "link": 35
+        },
+        {
+          "name": "custom_prompt_template",
+          "type": "PROMPT_TEMPLATE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "clip_l",
+          "type": "CLIP",
+          "link": null,
+          "shape": 7
         }
       ],
       "outputs": [
@@ -395,50 +407,6 @@
       "bgcolor": "#653"
     },
     {
-      "id": 5,
-      "type": "HyVideoDecode",
-      "pos": [
-        920,
-        -279
-      ],
-      "size": [
-        345.4285888671875,
-        102
-      ],
-      "flags": {},
-      "order": 11,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": 6
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 4
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            42
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "HyVideoDecode"
-      },
-      "widgets_values": [
-        true,
-        4
-      ]
-    },
-    {
       "id": 34,
       "type": "VHS_VideoCombine",
       "pos": [
@@ -510,6 +478,52 @@
           "muted": false
         }
       }
+    },
+    {
+      "id": 5,
+      "type": "HyVideoDecode",
+      "pos": [
+        920,
+        -279
+      ],
+      "size": [
+        345.4285888671875,
+        150
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 6
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            42
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "HyVideoDecode"
+      },
+      "widgets_values": [
+        true,
+        64,
+        128,
+        false
+      ]
     }
   ],
   "links": [
@@ -574,10 +588,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.7513148009015777,
+      "scale": 1,
       "offset": [
-        856.2226738131614,
-        635.642485451872
+        499.8829252621208,
+        382.71199061362694
       ]
     }
   },
