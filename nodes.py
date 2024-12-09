@@ -893,7 +893,7 @@ class HyVideoDecode:
                 vae.t_tile_overlap_factor = 0.25
         else:
             #defaults
-            vae.tile_latent_min_tsize = 64
+            vae.tile_latent_min_tsize = 16
             vae.tile_sample_min_size = 256
             vae.tile_latent_min_size = 32
         
@@ -976,7 +976,7 @@ class HyVideoEncode:
                 vae.t_tile_overlap_factor = 0.25
         else:
             #defaults
-            vae.tile_latent_min_tsize = 64
+            vae.tile_latent_min_tsize = 16
             vae.tile_sample_min_size = 256
             vae.tile_latent_min_size = 32
 

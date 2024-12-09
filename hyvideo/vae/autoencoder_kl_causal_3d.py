@@ -486,9 +486,9 @@ class AutoencoderKLCausal3D(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         B, C, T, H, W = x.shape
         overlap_size = int(self.tile_sample_min_tsize *
-                           (1 - self.tile_overlap_factor))
+                           (1 - self.t_tile_overlap_factor))
         blend_extent = int(self.tile_latent_min_tsize *
-                           self.tile_overlap_factor)
+                           self.t_tile_overlap_factor)
         t_limit = self.tile_latent_min_tsize - blend_extent
 
         # Split the video into tiles and encode them separately.
