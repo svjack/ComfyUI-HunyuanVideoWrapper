@@ -467,6 +467,8 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         extra_set_timesteps_kwargs = self.prepare_extra_func_kwargs(
             self.scheduler.set_timesteps, {"n_tokens": n_tokens}
         )
+        if hasattr(self.scheduler, "set_begin_index") and denoise_strength == 1.0:
+            self.scheduler.set_begin_index(begin_index=0)
         timesteps, num_inference_steps = retrieve_timesteps(
             self.scheduler,
             num_inference_steps,
@@ -510,7 +512,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps)
 
         
-        logger.info(f"Sampling {video_length} frames in {latents.shape[2]} latents at {width}x{height} with {num_inference_steps} inference steps")
+        logger.info(f"Sampling {video_length} frames in {latents.shape[2]} latents at {width}x{height} with {len(timesteps)} inference steps")
         comfy_pbar = ProgressBar(len(timesteps))
         with self.progress_bar(total=len(timesteps)) as progress_bar:
             for i, t in enumerate(timesteps):

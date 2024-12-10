@@ -41,7 +41,8 @@ from diffusers.models.attention_processor import (
 from diffusers.models.modeling_outputs import AutoencoderKLOutput
 from diffusers.models.modeling_utils import ModelMixin
 from .vae import DecoderCausal3D, BaseOutput, DecoderOutput, DiagonalGaussianDistribution, EncoderCausal3D
-
+from tqdm import tqdm
+from comfy.utils import ProgressBar
 
 @dataclass
 class DecoderOutput2(BaseOutput):
@@ -71,8 +72,9 @@ class AutoencoderKLCausal3D(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         act_fn: str = "silu",
         latent_channels: int = 4,
         norm_num_groups: int = 32,
-        sample_size: int = 32,
+        tile_sample_min_size: int = 256,
         sample_tsize: int = 64,
+        overlap_factor: float = 0.25,
         scaling_factor: float = 0.18215,
         force_upcast: float = True,
         spatial_compression_ratio: int = 8,
@@ -125,15 +127,13 @@ class AutoencoderKLCausal3D(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         self.tile_sample_min_tsize = self.sample_tsize
         self.tile_latent_min_tsize = self.sample_tsize // time_compression_ratio
 
-        self.tile_sample_min_size = self.config.sample_size
-        sample_size = (
-            self.config.sample_size[0]
-            if isinstance(self.config.sample_size, (list, tuple))
-            else self.config.sample_size
-        )
+        self.tile_sample_min_size = tile_sample_min_size
+        
         self.tile_latent_min_size = int(
-            sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
-        self.tile_overlap_factor = 0.25
+            self.tile_sample_min_size / (2 ** (len(self.config.block_out_channels) - 1)))
+        
+        self.tile_overlap_factor = overlap_factor
+        self.t_tile_overlap_factor = overlap_factor
 
     def _set_gradient_checkpointing(self, module, value=False):
         if isinstance(module, (EncoderCausal3D, DecoderCausal3D)):
@@ -336,7 +336,7 @@ class AutoencoderKLCausal3D(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
                 If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
                 returned.
 
-        """
+        """        
         if self.use_slicing and z.shape[0] > 1:
             decoded_slices = [self._decode(
                 z_slice).sample for z_slice in z.split(1)]
@@ -449,24 +449,26 @@ class AutoencoderKLCausal3D(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
                            self.tile_overlap_factor)
         row_limit = self.tile_sample_min_size - blend_extent
 
-        # Split z into overlapping tiles and decode them separately.
-        # The tiles have an overlap to avoid seams between tiles.
+        total_rows = (z.shape[-2] + overlap_size - 1) // overlap_size
+        comfy_pbar = ProgressBar(total_rows)
+
+        # Split z into overlapping tiles with progress bar
         rows = []
-        for i in range(0, z.shape[-2], overlap_size):
+        for i in tqdm(range(0, z.shape[-2], overlap_size), desc="Decoding rows", total=total_rows):
             row = []
             for j in range(0, z.shape[-1], overlap_size):
-                tile = z[:, :, :, i: i + self.tile_latent_min_size,
-                         j: j + self.tile_latent_min_size]
+                tile = z[:, :, :, i:i + self.tile_latent_min_size, j:j + self.tile_latent_min_size]
                 tile = self.post_quant_conv(tile)
                 decoded = self.decoder(tile)
                 row.append(decoded)
             rows.append(row)
+            comfy_pbar.update(1)
+
+        # Process results with progress bar
         result_rows = []
-        for i, row in enumerate(rows):
+        for i, row in tqdm(enumerate(rows), desc="Blending tiles", total=len(rows)):
             result_row = []
             for j, tile in enumerate(row):
-                # blend the above tile and the left tile
-                # to the current tile and add the current tile to the result row
                 if i > 0:
                     tile = self.blend_v(rows[i - 1][j], tile, blend_extent)
                 if j > 0:
@@ -484,9 +486,9 @@ class AutoencoderKLCausal3D(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         B, C, T, H, W = x.shape
         overlap_size = int(self.tile_sample_min_tsize *
-                           (1 - self.tile_overlap_factor))
+                           (1 - self.t_tile_overlap_factor))
         blend_extent = int(self.tile_latent_min_tsize *
-                           self.tile_overlap_factor)
+                           self.t_tile_overlap_factor)
         t_limit = self.tile_latent_min_tsize - blend_extent
 
         # Split the video into tiles and encode them separately.
@@ -522,9 +524,9 @@ class AutoencoderKLCausal3D(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         B, C, T, H, W = z.shape
         overlap_size = int(self.tile_latent_min_tsize *
-                           (1 - self.tile_overlap_factor))
+                           (1 - self.t_tile_overlap_factor))
         blend_extent = int(self.tile_sample_min_tsize *
-                           self.tile_overlap_factor)
+                           self.t_tile_overlap_factor)
         t_limit = self.tile_sample_min_tsize - blend_extent
 
         row = []
