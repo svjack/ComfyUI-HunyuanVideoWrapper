@@ -178,7 +178,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         height,
         width,
         video_length,
-        dtype,
         device,
         timesteps,
         generator,
@@ -197,7 +196,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=self.base_dtype)
         if latents is None:
             latents = noise
         else:
@@ -493,7 +492,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             height,
             width,
             latent_video_length,
-            prompt_embeds.dtype,
             device,
             timesteps,
             generator,
