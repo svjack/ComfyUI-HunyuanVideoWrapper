@@ -232,7 +232,6 @@ class HyVideoInverseSampler:
                 
                 progress_bar.update()
                 if callback is not None:
-                        print("callback", latents.shape)
                         callback(idx, latents.detach()[-1].permute(1,0,2,3), None, steps)
                 else:
                     comfy_pbar.update(1)
@@ -401,7 +400,7 @@ class HyVideoReSampler:
                     interpolated_velocity = eta * target_img_velocity + (1 - eta) * noise_pred
                     latents = latents + (sigma_prev - sigma) * interpolated_velocity
                   
-                    print(f"X_{sigma_prev:.3f} = X_{sigma:.3f} + {sigma_prev - sigma:.3f} * ({eta:.3f} * target_img_velocity + {1 - eta:.3f} * noise_pred)")
+                    #print(f"X_{sigma_prev:.3f} = X_{sigma:.3f} + {sigma_prev - sigma:.3f} * ({eta:.3f} * target_img_velocity + {1 - eta:.3f} * noise_pred)")
                     latents = latents.to(torch.bfloat16)
                    
                     if callback is not None:
