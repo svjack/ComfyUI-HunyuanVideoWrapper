@@ -178,7 +178,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         height,
         width,
         video_length,
-        dtype,
         device,
         timesteps,
         generator,
@@ -197,7 +196,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=self.base_dtype)
         if latents is None:
             latents = noise
         else:
@@ -493,7 +492,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             height,
             width,
             latent_video_length,
-            prompt_embeds.dtype,
             device,
             timesteps,
             generator,
@@ -510,6 +508,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
+
+        # 8. Preview callback
+        from ....latent_preview import prepare_callback
+        callback = prepare_callback(self.transformer, num_inference_steps)
 
         
         logger.info(f"Sampling {video_length} frames in {latents.shape[2]} latents at {width}x{height} with {len(timesteps)} inference steps")
@@ -621,10 +623,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 ):
                     if progress_bar is not None:
                         progress_bar.update()
+                    if callback is not None:
+                        callback(i, latents.detach()[-1].permute(1,0,2,3), None, num_inference_steps)
+                    else:
                         comfy_pbar.update(1)
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         #latents = (latents / 2 + 0.5).clamp(0, 1).cpu()
 
