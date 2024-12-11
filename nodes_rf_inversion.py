@@ -73,6 +73,9 @@ class HyVideoInverseSampler:
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "force_offload": ("BOOLEAN", {"default": True}),
                 "gamma": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "start_step": ("INT", {"default": 0, "min": 0}),
+                "end_step": ("INT", {"default": 18, "min": 0}),
+                "gamma_trend": (['constant', 'linear_increase', 'linear_decrease'], {"default": "constant"}),
             },
         }
 
@@ -81,7 +84,7 @@ class HyVideoInverseSampler:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, seed, samples, gamma, force_offload):
+    def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, seed, samples, gamma, start_step, end_step, gamma_trend, force_offload):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         dtype = model["dtype"]
@@ -173,7 +176,7 @@ class HyVideoInverseSampler:
         elif frames_needed < current_frames:
             latents = latents[:, :frames_needed, :, :, :]
             
-
+        gamma_values = generate_eta_values(timesteps / 1000, start_step, end_step, gamma, gamma_trend)
 
         # 7. Denoising loop
         num_warmup_steps = len(timesteps) - steps * pipeline.scheduler.order
@@ -224,6 +227,7 @@ class HyVideoInverseSampler:
                 latents = latents.to(torch.float32)
                 noise_pred = noise_pred.to(torch.float32)
                 target_noise_velocity = (noise - latents) / (1.0 - sigma)
+                gamma = gamma_values[idx]
                 interpolated_velocity = gamma * target_noise_velocity + (1 - gamma) * noise_pred
 
                 latents = latents + (sigma_prev - sigma) * interpolated_velocity
