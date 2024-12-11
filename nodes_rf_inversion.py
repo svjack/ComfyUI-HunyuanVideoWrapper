@@ -1,0 +1,437 @@
+#based on https://github.com/DarkMnDragon/rf-inversion-diffuser/blob/main/inversion_editing_cli.py
+import torch
+import gc
+import os
+from .utils import log, print_memory
+
+from .hyvideo.utils.data_utils import align_to
+from diffusers.utils.torch_utils import randn_tensor
+import comfy.model_management as mm
+from .nodes import get_rotary_pos_embed
+
+script_directory = os.path.dirname(os.path.abspath(__file__))
+
+def generate_eta_values(
+    timesteps, 
+    start_step, 
+    end_step, 
+    eta, 
+    eta_trend,
+):
+    assert start_step < end_step and start_step >= 0 and end_step <= len(timesteps), "Invalid start_step and end_step"
+    # timesteps are monotonically decreasing, from 1.0 to 0.0
+    print("eta timesteps", timesteps)
+    eta_values = [0.0] * (len(timesteps) - 1)
+    
+    if eta_trend == 'constant':
+        for i in range(start_step, end_step):
+            eta_values[i] = eta
+    elif eta_trend == 'linear_increase':
+        total_time = timesteps[start_step] - timesteps[end_step - 1]
+        for i in range(start_step, end_step):
+            eta_values[i] = eta * (timesteps[start_step] - timesteps[i]) / total_time
+    elif eta_trend == 'linear_decrease':
+        total_time = timesteps[start_step] - timesteps[end_step - 1]
+        for i in range(start_step, end_step):
+            eta_values[i] = eta * (timesteps[i] - timesteps[end_step - 1]) / total_time
+    else:
+        raise NotImplementedError(f"Unsupported eta_trend: {eta_trend}")
+    
+    return eta_values
+
+class HyVideoEmptyTextEmbeds:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            }
+        }
+
+    RETURN_TYPES = ("HYVIDEMBEDS", )
+    RETURN_NAMES = ("hyvid_embeds",)
+    FUNCTION = "process"
+    CATEGORY = "HunyuanVideoWrapper"
+    DESCRIPTION = "Empty Text Embeds for HunyuanVideoWrapper, to avoid having to encode prompts for inverse sampling"
+
+    def process(self):
+        device = mm.text_encoder_device()
+        offload_device = mm.text_encoder_offload_device()
+        
+        prompt_embeds_dict = torch.load(os.path.join(script_directory, "hunyuan_empty_prompt_embeds_dict.pt"))
+        return (prompt_embeds_dict,)
+
+class HyVideoInverseSampler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": ("HYVIDEOMODEL",),
+                "hyvid_embeds": ("HYVIDEMBEDS", ),
+                "samples": ("LATENT", {"tooltip": "init Latents to use for video2video process"} ),
+                "steps": ("INT", {"default": 30, "min": 1}),
+                "embedded_guidance_scale": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 30.0, "step": 0.01}),
+                "flow_shift": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 30.0, "step": 0.01}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "force_offload": ("BOOLEAN", {"default": True}),
+                "gamma": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("samples",)
+    FUNCTION = "process"
+    CATEGORY = "HunyuanVideoWrapper"
+
+    def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, seed, samples, gamma, force_offload):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        dtype = model["dtype"]
+        transformer = model["pipe"].transformer
+        pipeline = model["pipe"]
+        
+        generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
+
+        latents = samples["samples"] if samples is not None else None
+        batch_size, num_channels_latents, latent_num_frames, latent_height, latent_width = latents.shape
+        height = latent_height * pipeline.vae_scale_factor
+        width = latent_width * pipeline.vae_scale_factor
+        num_frames = (latent_num_frames - 1) * 4 + 1
+
+
+        if width <= 0 or height <= 0 or num_frames <= 0:
+            raise ValueError(
+                f"`height` and `width` and `video_length` must be positive integers, got height={height}, width={width}, video_length={num_frames}"
+            )
+        if (num_frames - 1) % 4 != 0:
+            raise ValueError(
+                f"`video_length-1` must be a multiple of 4, got {num_frames}"
+            )
+
+        log.info(
+            f"Input (height, width, video_length) = ({height}, {width}, {num_frames})"
+        )
+
+        freqs_cos, freqs_sin = get_rotary_pos_embed(transformer, num_frames, height, width)
+
+        pipeline.scheduler.shift = flow_shift
+  
+        if model["block_swap_args"] is not None:
+            for name, param in transformer.named_parameters():
+                #print(name, param.data.device)
+                if "single" not in name and "double" not in name:
+                    param.data = param.data.to(device)
+                
+            transformer.block_swap(
+                model["block_swap_args"]["double_blocks_to_swap"] - 1 , 
+                model["block_swap_args"]["single_blocks_to_swap"] - 1,
+                offload_txt_in = model["block_swap_args"]["offload_txt_in"],
+                offload_img_in = model["block_swap_args"]["offload_img_in"],
+            )
+        elif model["manual_offloading"]:
+            transformer.to(device)
+
+        mm.unload_all_models()
+        mm.soft_empty_cache()
+        gc.collect()
+        
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+        except:
+            pass
+        
+        pipeline.scheduler.set_timesteps(steps, device=device)
+        timesteps = pipeline.scheduler.timesteps
+        timesteps = timesteps.flip(0)
+        print("timesteps", timesteps)
+        print("pipeline.scheduler.order", pipeline.scheduler.order)
+        print("len(timesteps)", len(timesteps))
+
+        latent_video_length = (num_frames - 1) // 4 + 1
+
+        # 5. Prepare latent variables
+        num_channels_latents = transformer.config.in_channels
+       
+        
+        latents = latents.to(device)
+
+        shape = (
+            1,
+            num_channels_latents,
+            latent_video_length,
+            int(height) // pipeline.vae_scale_factor,
+            int(width) // pipeline.vae_scale_factor,
+        )
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        
+        frames_needed = noise.shape[1]
+        current_frames = latents.shape[1]
+        
+        if frames_needed > current_frames:
+            repeat_factor = frames_needed - current_frames
+            additional_frame = torch.randn((latents.size(0), repeat_factor, latents.size(2), latents.size(3), latents.size(4)), dtype=latents.dtype, device=latents.device)
+            latents = torch.cat((additional_frame, latents), dim=1)
+            self.additional_frames = repeat_factor
+        elif frames_needed < current_frames:
+            latents = latents[:, :frames_needed, :, :, :]
+            
+
+
+        # 7. Denoising loop
+        num_warmup_steps = len(timesteps) - steps * pipeline.scheduler.order
+        self._num_timesteps = len(timesteps)
+
+        from .latent_preview import prepare_callback
+        callback = prepare_callback(transformer, steps)
+
+        from comfy.utils import ProgressBar
+        from tqdm import tqdm
+        log.info(f"Sampling {num_frames} frames in {latents.shape[2]} latents at {width}x{height} with {len(timesteps)} inference steps")
+        comfy_pbar = ProgressBar(len(timesteps))
+        with tqdm(total=len(timesteps)) as progress_bar:
+            for idx, (t, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
+                latent_model_input = latents
+
+                t_expand = t.repeat(latent_model_input.shape[0])
+                guidance_expand = (
+                    torch.tensor(
+                        [embedded_guidance_scale] * latent_model_input.shape[0],
+                        dtype=torch.float32,
+                        device=device,
+                    ).to(pipeline.base_dtype)
+                    * 1000.0
+                    if embedded_guidance_scale is not None
+                    else None
+                )
+
+                # predict the noise residual
+                with torch.autocast(
+                    device_type="cuda", dtype=pipeline.base_dtype, enabled=True
+                ):
+                    noise_pred = transformer(  # For an input image (129, 192, 336) (1, 256, 256)
+                        latent_model_input,  # [2, 16, 33, 24, 42]
+                        t_expand,  # [2]
+                        text_states=hyvid_embeds["prompt_embeds"],  # [2, 256, 4096]
+                        text_mask=hyvid_embeds["attention_mask"],  # [2, 256]
+                        text_states_2=hyvid_embeds["prompt_embeds_2"],  # [2, 768]
+                        freqs_cos=freqs_cos,  # [seqlen, head_dim]
+                        freqs_sin=freqs_sin,  # [seqlen, head_dim]
+                        guidance=guidance_expand,
+                        stg_block_idx=-1,
+                        stg_mode=None,
+                        return_dict=True,
+                    )["x"]
+                sigma = t / 1000.0
+                sigma_prev = t_prev / 1000.0
+                target_noise_velocity = (noise - latents) / (1.0 - sigma)
+                interpolated_velocity = gamma * target_noise_velocity + (1 - gamma) * noise_pred
+
+                latents = latents + (sigma_prev - sigma) * interpolated_velocity
+
+                # compute the previous noisy sample x_t -> x_t-1
+                #latents = pipeline.scheduler.step(noise_pred, t, latents, return_dict=False)[0]
+
+                
+                progress_bar.update()
+                if callback is not None:
+                        print("callback", latents.shape)
+                        callback(idx, latents.detach()[-1].permute(1,0,2,3), None, steps)
+                else:
+                    comfy_pbar.update(1)
+                  
+
+        print_memory(device)
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+        except:
+            pass
+        
+        if force_offload:
+            if model["manual_offloading"]:
+                transformer.to(offload_device)
+                mm.soft_empty_cache()
+                gc.collect()
+
+        return ({
+            "samples": latents
+            },)
+
+class HyVideoReSampler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": ("HYVIDEOMODEL",),
+                "hyvid_embeds": ("HYVIDEMBEDS", ),
+                "samples": ("LATENT", {"tooltip": "init Latents to use for video2video process"} ),
+                "inversed_latents": ("LATENT", {"tooltip": "inversed latents from HyVideoInverseSampler"} ),
+                "steps": ("INT", {"default": 30, "min": 1}),
+                "embedded_guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
+                "flow_shift": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 30.0, "step": 0.01}),
+                "force_offload": ("BOOLEAN", {"default": True}),
+                "start_step": ("INT", {"default": 0, "min": 0}),
+                "end_step": ("INT", {"default": 18, "min": 0}),
+                "eta_base": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "eta_trend": (['constant', 'linear_increase', 'linear_decrease'], {"default": "constant"}),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("samples",)
+    FUNCTION = "process"
+    CATEGORY = "HunyuanVideoWrapper"
+
+    def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, 
+                samples, inversed_latents, force_offload, start_step, end_step, eta_base, eta_trend):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        dtype = model["dtype"]
+        transformer = model["pipe"].transformer
+        pipeline = model["pipe"]
+        
+        target_latents = samples["samples"]
+
+        batch_size, num_channels_latents, latent_num_frames, latent_height, latent_width = target_latents.shape
+        height = latent_height * pipeline.vae_scale_factor
+        width = latent_width * pipeline.vae_scale_factor
+        num_frames = (latent_num_frames - 1) * 4 + 1
+
+        if width <= 0 or height <= 0 or num_frames <= 0:
+            raise ValueError(
+                f"`height` and `width` and `video_length` must be positive integers, got height={height}, width={width}, video_length={num_frames}"
+            )
+        if (num_frames - 1) % 4 != 0:
+            raise ValueError(
+                f"`video_length-1` must be a multiple of 4, got {num_frames}"
+            )
+
+        log.info(
+            f"Input (height, width, video_length) = ({height}, {width}, {num_frames})"
+        )
+
+        freqs_cos, freqs_sin = get_rotary_pos_embed(transformer, num_frames, height, width)
+
+        pipeline.scheduler.shift = flow_shift
+  
+        if model["block_swap_args"] is not None:
+            for name, param in transformer.named_parameters():
+                #print(name, param.data.device)
+                if "single" not in name and "double" not in name:
+                    param.data = param.data.to(device)
+                
+            transformer.block_swap(
+                model["block_swap_args"]["double_blocks_to_swap"] - 1 , 
+                model["block_swap_args"]["single_blocks_to_swap"] - 1,
+                offload_txt_in = model["block_swap_args"]["offload_txt_in"],
+                offload_img_in = model["block_swap_args"]["offload_img_in"],
+            )
+        elif model["manual_offloading"]:
+            transformer.to(device)
+
+        mm.unload_all_models()
+        mm.soft_empty_cache()
+        gc.collect()
+        
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+        except:
+            pass
+        
+        pipeline.scheduler.set_timesteps(steps, device=device)
+        timesteps = pipeline.scheduler.timesteps
+
+        eta_values = generate_eta_values(timesteps / 1000, start_step, end_step, eta_base, eta_trend)
+           
+        
+        target_latents = target_latents.to(device)
+        latents = inversed_latents["samples"]
+
+        # 7. Denoising loop
+        self._num_timesteps = len(timesteps)
+
+        from .latent_preview import prepare_callback
+        callback = prepare_callback(transformer, steps)
+
+        from comfy.utils import ProgressBar
+        from tqdm import tqdm
+        log.info(f"Sampling {num_frames} frames in {latents.shape[2]} latents at {width}x{height} with {len(timesteps)} inference steps")
+        comfy_pbar = ProgressBar(len(timesteps))
+
+        with tqdm(total=len(timesteps)) as progress_bar:
+             for idx, (t, t_prev) in enumerate(zip(timesteps[:-1], timesteps[1:])):
+
+                latent_model_input = latents
+
+                t_expand = t.repeat(latent_model_input.shape[0])
+                guidance_expand = (
+                    torch.tensor(
+                        [embedded_guidance_scale] * latent_model_input.shape[0],
+                        dtype=torch.float32,
+                        device=device,
+                    ).to(pipeline.base_dtype)
+                    * 1000.0
+                    if embedded_guidance_scale is not None
+                    else None
+                )
+
+                # predict the noise residual
+                with torch.autocast(
+                    device_type="cuda", dtype=pipeline.base_dtype, enabled=True
+                ):
+                    noise_pred = transformer(  # For an input image (129, 192, 336) (1, 256, 256)
+                        latent_model_input,  # [2, 16, 33, 24, 42]
+                        t_expand,  # [2]
+                        text_states=hyvid_embeds["prompt_embeds"],  # [2, 256, 4096]
+                        text_mask=hyvid_embeds["attention_mask"],  # [2, 256]
+                        text_states_2=hyvid_embeds["prompt_embeds_2"],  # [2, 768]
+                        freqs_cos=freqs_cos,  # [seqlen, head_dim]
+                        freqs_sin=freqs_sin,  # [seqlen, head_dim]
+                        guidance=guidance_expand,
+                        stg_block_idx=-1,
+                        stg_mode=None,
+                        return_dict=True,
+                    )["x"]
+                    sigma = t / 1000.0
+                    sigma_prev = t_prev / 1000.0
+                    noise_pred = noise_pred.to(torch.float32)
+                    latents = latents.to(torch.float32)
+                    target_latents = target_latents.to(torch.float32)
+                    target_img_velocity = -(target_latents - latents) / sigma
+
+                    # interpolated velocity
+                    eta = eta_values[idx]
+                    interpolated_velocity = eta * target_img_velocity + (1 - eta) * noise_pred
+                    latents = latents + (sigma_prev - sigma) * interpolated_velocity
+                  
+                    print(f"X_{sigma_prev:.3f} = X_{sigma:.3f} + {sigma_prev - sigma:.3f} * ({eta:.3f} * target_img_velocity + {1 - eta:.3f} * noise_pred)")
+                    latents = latents.to(torch.bfloat16)
+                   
+                    if callback is not None:
+                        callback(idx, latents.detach()[-1].permute(1,0,2,3), None, steps)
+                    else:
+                        comfy_pbar.update(1)
+
+        print_memory(device)
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+        except:
+            pass
+        
+        if force_offload:
+            if model["manual_offloading"]:
+                transformer.to(offload_device)
+                mm.soft_empty_cache()
+                gc.collect()
+
+        return ({
+            "samples": latents
+            },)
+
+NODE_CLASS_MAPPINGS = {
+    "HyVideoInverseSampler": HyVideoInverseSampler,
+    "HyVideoReSampler": HyVideoReSampler,
+    "HyVideoEmptyTextEmbeds": HyVideoEmptyTextEmbeds
+}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "HyVideoInverseSampler": "HunyuanVideo Inverse Sampler",
+    "HyVideoReSampler": "HunyuanVideo ReSampler",
+    "HyVideoEmptyTextEmbeds": "HunyuanVideo Empty Text Embeds"
+}

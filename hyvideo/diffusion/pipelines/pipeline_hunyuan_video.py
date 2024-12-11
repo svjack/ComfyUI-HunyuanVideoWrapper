@@ -509,6 +509,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
+        # 8. Preview callback
+        from ....latent_preview import prepare_callback
+        callback = prepare_callback(self.transformer, num_inference_steps)
+
         
         logger.info(f"Sampling {video_length} frames in {latents.shape[2]} latents at {width}x{height} with {len(timesteps)} inference steps")
         comfy_pbar = ProgressBar(len(timesteps))
@@ -619,10 +623,10 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 ):
                     if progress_bar is not None:
                         progress_bar.update()
+                    if callback is not None:
+                        callback(i, latents.detach()[-1].permute(1,0,2,3), None, num_inference_steps)
+                    else:
                         comfy_pbar.update(1)
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         #latents = (latents / 2 + 0.5).clamp(0, 1).cpu()
 
