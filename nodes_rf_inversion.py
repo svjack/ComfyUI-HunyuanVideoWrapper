@@ -273,10 +273,10 @@ class HyVideoReSampler:
                 "embedded_guidance_scale": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "flow_shift": ("FLOAT", {"default": 1.0, "min": 1.0, "max": 30.0, "step": 0.01}),
                 "force_offload": ("BOOLEAN", {"default": True}),
-                "start_step": ("INT", {"default": 0, "min": 0}),
-                "end_step": ("INT", {"default": 18, "min": 0}),
-                "eta_base": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "eta_trend": (['constant', 'linear_increase', 'linear_decrease'], {"default": "constant"}),
+                "start_step": ("INT", {"default": 0, "min": 0, "tooltip": "The step to start the effect of the inversed latents"}),
+                "end_step": ("INT", {"default": 18, "min": 0, "tooltip": "The step to end the effect of the inversed latents"}),
+                "eta_base": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "The base value of the eta, overall strength of the effect from the inversed latents"}),
+                "eta_trend": (['constant', 'linear_increase', 'linear_decrease'], {"default": "constant", "tooltip": "The trend of the eta value over steps"}),
             },
         }
 
@@ -409,7 +409,8 @@ class HyVideoReSampler:
                   
                     #print(f"X_{sigma_prev:.3f} = X_{sigma:.3f} + {sigma_prev - sigma:.3f} * ({eta:.3f} * target_img_velocity + {1 - eta:.3f} * noise_pred)")
                     latents = latents.to(torch.bfloat16)
-                   
+
+                    progress_bar.update()
                     if callback is not None:
                         callback(idx, latents.detach()[-1].permute(1,0,2,3), None, steps)
                     else:
