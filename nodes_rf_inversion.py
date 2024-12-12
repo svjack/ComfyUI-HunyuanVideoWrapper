@@ -85,6 +85,7 @@ class HyVideoInverseSampler:
     CATEGORY = "HunyuanVideoWrapper"
 
     def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, seed, samples, gamma, start_step, end_step, gamma_trend, force_offload):
+        model = model.model
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         dtype = model["dtype"]
@@ -287,6 +288,7 @@ class HyVideoReSampler:
 
     def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, 
                 samples, inversed_latents, force_offload, start_step, end_step, eta_base, eta_trend):
+        model = model.model
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         dtype = model["dtype"]
