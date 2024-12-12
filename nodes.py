@@ -72,6 +72,84 @@ def get_rotary_pos_embed(transformer, video_length, height, width):
         )
         return freqs_cos, freqs_sin
 
+def filter_state_dict_by_blocks(state_dict, blocks_mapping):
+    filtered_dict = {}
+    
+    for key in state_dict:
+        if 'double_blocks.' in key or 'single_blocks.' in key:
+            block_pattern = key.split('diffusion_model.')[1].split('.', 2)[0:2]
+            block_key = f'{block_pattern[0]}.{block_pattern[1]}.'
+            
+            if block_key in blocks_mapping:
+                filtered_dict[key] = state_dict[key]
+           
+    return filtered_dict
+
+class HyVideoLoraBlockEdit:
+    def __init__(self):
+        self.loaded_lora = None
+
+    @classmethod
+    def INPUT_TYPES(s):
+        arg_dict = {}
+        argument = ("BOOLEAN", {"default": True})
+
+        for i in range(20):
+            arg_dict["double_blocks.{}.".format(i)] = argument
+
+        for i in range(40):
+            arg_dict["single_blocks.{}.".format(i)] = argument
+
+        return {"required": arg_dict}
+    
+    RETURN_TYPES = ("SELECTEDBLOCKS", )
+    RETURN_NAMES = ("blocks", )
+    OUTPUT_TOOLTIPS = ("The modified diffusion model.",)
+    FUNCTION = "select"
+
+    CATEGORY = "HunyuanVideoWrapper"
+
+    def select(self, **kwargs):
+        selected_blocks = {k: v for k, v in kwargs.items() if v is True}
+        print("Selected blocks: ", selected_blocks)
+        return (selected_blocks,)
+class HyVideoLoraSelect:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+               "lora": (folder_paths.get_filename_list("loras"), 
+                {"tooltip": "LORA models are expected to be in ComfyUI/models/loras with .safetensors extension"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.0001, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
+            },
+            "optional": {
+                "prev_lora":("HYVIDLORA", {"default": None, "tooltip": "For loading multiple LoRAs"}),
+                "blocks":("SELECTEDBLOCKS", ),
+            }
+        }
+
+    RETURN_TYPES = ("HYVIDLORA",)
+    RETURN_NAMES = ("lora", )
+    FUNCTION = "getlorapath"
+    CATEGORY = "HunyuanVideoWrapper"
+    DESCRIPTION = "Select a LoRA model from ComfyUI/models/loras"
+
+    def getlorapath(self, lora, strength, blocks=None, prev_lora=None, fuse_lora=False):
+        loras_list = []
+
+        lora = {
+            "path": folder_paths.get_full_path("loras", lora),
+            "strength": strength,
+            "name": lora.split(".")[0],
+            "fuse_lora": fuse_lora,
+            "blocks": blocks
+        }
+        if prev_lora is not None:
+            loras_list.extend(prev_lora)
+            
+        loras_list.append(lora)
+        return (loras_list,)
+    
 class HyVideoBlockSwap:
     @classmethod
     def INPUT_TYPES(s):
@@ -148,7 +226,7 @@ class HyVideoModelLoader:
             "required": {
                 "model": (folder_paths.get_filename_list("diffusion_models"), {"tooltip": "These models are loaded from the 'ComfyUI/models/diffusion_models' -folder",}),
 
-            "base_precision": (["fp16", "fp32", "bf16"], {"default": "bf16"}),
+            "base_precision": (["fp32", "bf16"], {"default": "bf16"}),
             "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6", "torchao_int4", "torchao_int8"], {"default": 'disabled', "tooltip": "optional quantization method"}),
             "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
             },
@@ -161,16 +239,17 @@ class HyVideoModelLoader:
                     ], {"default": "flash_attn"}),
                 "compile_args": ("COMPILEARGS", ),
                 "block_swap_args": ("BLOCKSWAPARGS", ),
+                "lora": ("HYVIDLORA", {"default": None}),
             }
         }
 
-    RETURN_TYPES = ("MODEL",)
+    RETURN_TYPES = ("HYVIDEOMODEL",)
     RETURN_NAMES = ("model", )
     FUNCTION = "loadmodel"
     CATEGORY = "HunyuanVideoWrapper"
 
     def loadmodel(self, model, base_precision, load_device,  quantization,
-                  compile_args=None, attention_mode="sdpa", block_swap_args=None):
+                  compile_args=None, attention_mode="sdpa", block_swap_args=None, lora=None):
         transformer = None
         manual_offloading = True
         if "sage" in attention_mode:
@@ -182,7 +261,7 @@ class HyVideoModelLoader:
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         manual_offloading = True
-        transformer_load_device = device if load_device == "main_device" else offload_device
+        transformer_load_device = device if load_device == "main_device" or lora is None else offload_device
         mm.soft_empty_cache()
 
         base_dtype = {"fp8_e4m3fn": torch.float8_e4m3fn, "fp8_e4m3fn_fast": torch.float8_e4m3fn, "bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[base_precision]
@@ -212,7 +291,74 @@ class HyVideoModelLoader:
                 **factor_kwargs
             )
         transformer.eval()
-        if "torchao" in quantization:
+
+        comfy_model = HyVideoModel(
+            HyVideoModelConfig(base_dtype),
+            model_type=comfy.model_base.ModelType.FLOW,
+            device=device,
+        )
+        scheduler = FlowMatchDiscreteScheduler(
+            shift=9.0,
+            reverse=True,
+            solver="euler",
+        )
+        pipe = HunyuanVideoPipeline(
+            transformer=transformer,
+            scheduler=scheduler,
+            progress_bar_config=None,
+            base_dtype=base_dtype
+        )
+        
+        if not "torchao" in quantization:
+            log.info("Using accelerate to load and assign model weights to device...")
+            if quantization == "fp8_e4m3fn" or quantization == "fp8_e4m3fn_fast":
+                dtype = torch.float8_e4m3fn
+            else:
+                dtype = base_dtype
+            params_to_keep = {"norm", "bias", "time_in", "vector_in", "guidance_in", "txt_in", "img_in"}
+            for name, param in transformer.named_parameters():
+                dtype_to_use = base_dtype if any(keyword in name for keyword in params_to_keep) else dtype
+                set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=dtype_to_use, value=sd[name])
+            
+            comfy_model.diffusion_model = transformer
+            patcher = comfy.model_patcher.ModelPatcher(comfy_model, device, offload_device)
+
+            if lora is not None:
+                from comfy.sd import load_lora_for_models
+                for l in lora:
+                    lora_path = l["path"]
+                    lora_strength = l["strength"]               
+                    lora_sd = load_torch_file(lora_path, safe_load=True)
+                    if l["blocks"]:
+                        lora_sd = filter_state_dict_by_blocks(lora_sd, l["blocks"])
+                   
+                    #for k in lora_sd.keys():
+                     #   print(k)
+
+                    patcher, _ = load_lora_for_models(patcher, None, lora_sd, lora_strength, 0)
+
+            comfy.model_management.load_models_gpu([patcher])
+
+            if quantization == "fp8_e4m3fn_fast":
+                from .fp8_optimization import convert_fp8_linear
+                convert_fp8_linear(patcher.model.diffusion_model, base_dtype, params_to_keep=params_to_keep)
+
+            #compile
+            if compile_args is not None:
+                torch._dynamo.config.cache_size_limit = compile_args["dynamo_cache_size_limit"]
+                if compile_args["compile_single_blocks"]:
+                    for i, block in enumerate(patcher.model.diffusion_model.single_blocks):
+                        patcher.model.diffusion_model.single_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+                if compile_args["compile_double_blocks"]:
+                    for i, block in enumerate(patcher.model.diffusion_model.double_blocks):
+                        patcher.model.diffusion_model.double_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+                if compile_args["compile_txt_in"]:
+                    patcher.model.diffusion_model.txt_in = torch.compile(patcher.model.diffusion_model.txt_in, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+                if compile_args["compile_vector_in"]:
+                    patcher.model.diffusion_model.vector_in = torch.compile(patcher.model.diffusion_model.vector_in, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+                if compile_args["compile_final_layer"]:
+                    patcher.model.diffusion_model.final_layer = torch.compile(patcher.model.diffusion_model.final_layer, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+        elif "torchao" in quantization:
             try:
                 from torchao.quantization import (
                 quantize_,
@@ -223,7 +369,7 @@ class HyVideoModelLoader:
                 int4_weight_only
             )
             except:
-                raise ImportError("torchao is not installed, please install torchao to use fp8dq")
+                raise ImportError("torchao is not installed")
 
             # def filter_fn(module: nn.Module, fqn: str) -> bool:
             #     target_submodules = {'attn1', 'ff'} # avoid norm layers, 1.5 at least won't work with quantized norm1 #todo: test other models
@@ -246,97 +392,57 @@ class HyVideoModelLoader:
                 quant_func = int8_dynamic_activation_int8_weight()
 
             log.info(f"Quantizing model with {quant_func}")
+            comfy_model.diffusion_model = transformer
+            patcher = comfy.model_patcher.ModelPatcher(comfy_model, device, offload_device)
 
-            for i, block in enumerate(transformer.single_blocks):
+            if lora is not None:
+                from comfy.sd import load_lora_for_models
+                for l in lora:
+                    lora_path = l["path"]
+                    lora_strength = l["strength"]               
+                    lora_sd = load_torch_file(lora_path, safe_load=True)
+                    patcher, _ = load_lora_for_models(patcher, None, lora_sd, lora_strength, 0)
+
+            comfy.model_management.load_models_gpu([patcher])
+
+            for i, block in enumerate(patcher.model.diffusion_model.single_blocks):
                 log.info(f"Quantizing single_block {i}")
                 for name, _ in block.named_parameters(prefix=f"single_blocks.{i}"):
                     #print(f"Parameter name: {name}")
-                    set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=base_dtype, value=sd[name])
+                    set_module_tensor_to_device(patcher.model.diffusion_model, name, device=patcher.model.diffusion_model_load_device, dtype=base_dtype, value=sd[name])
                 if compile_args is not None:
-                    transformer.single_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+                    patcher.model.diffusion_model.single_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
                 quantize_(block, quant_func)
                 print(block)
                 block.to(offload_device)
-            for i, block in enumerate(transformer.double_blocks):
+            for i, block in enumerate(patcher.model.diffusion_model.double_blocks):
                 log.info(f"Quantizing double_block {i}")
                 for name, _ in block.named_parameters(prefix=f"double_blocks.{i}"):
                     #print(f"Parameter name: {name}")
-                    set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=base_dtype, value=sd[name])
+                    set_module_tensor_to_device(patcher.model.diffusion_model, name, device=patcher.model.diffusion_model_load_device, dtype=base_dtype, value=sd[name])
                 if compile_args is not None:
-                    transformer.double_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+                    patcher.model.diffusion_model.double_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
                 quantize_(block, quant_func)
-            for name, param in transformer.named_parameters():
+            for name, param in patcher.model.diffusion_model.named_parameters():
                 if "single_blocks" not in name and "double_blocks" not in name:
-                    set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=base_dtype, value=sd[name])
+                    set_module_tensor_to_device(patcher.model.diffusion_model, name, device=patcher.model.diffusion_model_load_device, dtype=base_dtype, value=sd[name])
 
             manual_offloading = False # to disable manual .to(device) calls
             log.info(f"Quantized transformer blocks to {quantization}")
-            for name, param in transformer.named_parameters():
+            for name, param in patcher.model.diffusion_model.named_parameters():
                 print(name, param.dtype)
                 #param.data = param.data.to(self.vae_dtype).to(device)
-        else:
-            log.info("Using accelerate to load and assign model weights to device...")
-            if quantization == "fp8_e4m3fn" or quantization == "fp8_e4m3fn_fast":
-                dtype = torch.float8_e4m3fn
-            else:
-                dtype = base_dtype
-            params_to_keep = {"norm", "bias", "time_in", "vector_in", "guidance_in", "txt_in", "img_in"}
-            for name, param in transformer.named_parameters():
-                dtype_to_use = base_dtype if any(keyword in name for keyword in params_to_keep) else dtype
-                set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=dtype_to_use, value=sd[name])
-
-
-            if quantization == "fp8_e4m3fn_fast":
-                from .fp8_optimization import convert_fp8_linear
-                convert_fp8_linear(transformer, base_dtype, params_to_keep=params_to_keep)
-
-            #compile
-            if compile_args is not None:
-                torch._dynamo.config.cache_size_limit = compile_args["dynamo_cache_size_limit"]
-                if compile_args["compile_single_blocks"]:
-                    for i, block in enumerate(transformer.single_blocks):
-                        transformer.single_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
-                if compile_args["compile_double_blocks"]:
-                    for i, block in enumerate(transformer.double_blocks):
-                        transformer.double_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
-                if compile_args["compile_txt_in"]:
-                    transformer.txt_in = torch.compile(transformer.txt_in, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
-                if compile_args["compile_vector_in"]:
-                    transformer.vector_in = torch.compile(transformer.vector_in, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
-                if compile_args["compile_final_layer"]:
-                    transformer.final_layer = torch.compile(transformer.final_layer, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
 
         del sd
         mm.soft_empty_cache()
 
-        scheduler = FlowMatchDiscreteScheduler(
-            shift=9.0,
-            reverse=True,
-            solver="euler",
-        )
-
-        pipe = HunyuanVideoPipeline(
-            transformer=transformer,
-            scheduler=scheduler,
-            progress_bar_config=None,
-            base_dtype=base_dtype
-        )
-
-        comfy_model = HyVideoModel(
-            HyVideoModelConfig(base_dtype),
-            model_type=comfy.model_base.ModelType.FLOW,
-            device=mm.get_torch_device(),
-        )
-        comfy_model["pipe"] = pipe
-        comfy_model["dtype"] = base_dtype
-        comfy_model["base_path"] = model_path
-        comfy_model["model_name"] = model
-        comfy_model["manual_offloading"] = manual_offloading
-        comfy_model["quantization"] = "disabled"
-        comfy_model["block_swap_args"] = block_swap_args
-        comfy_model.diffusion_model = transformer
-
-        patcher = comfy.model_patcher.ModelPatcher(comfy_model, device, offload_device)
+        patcher.model["pipe"] = pipe
+        patcher.model["dtype"] = base_dtype
+        patcher.model["base_path"] = model_path
+        patcher.model["model_name"] = model
+        patcher.model["manual_offloading"] = manual_offloading
+        patcher.model["quantization"] = "disabled"
+        patcher.model["block_swap_args"] = block_swap_args
 
         return (patcher,)
 
@@ -760,7 +866,7 @@ class HyVideoSampler:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model": ("MODEL",),
+                "model": ("HYVIDEOMODEL",),
                 "hyvid_embeds": ("HYVIDEMBEDS", ),
                 "width": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 16}),
                 "height": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 16}),
@@ -785,8 +891,6 @@ class HyVideoSampler:
     CATEGORY = "HunyuanVideoWrapper"
 
     def process(self, model, hyvid_embeds, flow_shift, steps, embedded_guidance_scale, seed, width, height, num_frames, samples=None, denoise_strength=1.0, force_offload=True, stg_args=None):
-        # We only need this so that LoRA weights get patched.
-        comfy.model_management.load_models_gpu([model])
         model = model.model
 
         device = mm.get_torch_device()
@@ -1116,6 +1220,8 @@ NODE_CLASS_MAPPINGS = {
     "HyVideoSTG": HyVideoSTG,
     "HyVideoCustomPromptTemplate": HyVideoCustomPromptTemplate,
     "HyVideoLatentPreview": HyVideoLatentPreview,
+    "HyVideoLoraSelect": HyVideoLoraSelect,
+    "HyVideoLoraBlockEdit": HyVideoLoraBlockEdit,
     }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoSampler": "HunyuanVideo Sampler",
@@ -1130,4 +1236,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoSTG": "HunyuanVideo STG",
     "HyVideoCustomPromptTemplate": "HunyuanVideo Custom Prompt Template",
     "HyVideoLatentPreview": "HunyuanVideo Latent Preview",
+    "HyVideoLoraSelect": "HunyuanVideo Lora Select",
+    "HyVideoLoraBlockEdit": "HunyuanVideo Lora Block Edit",
     }
