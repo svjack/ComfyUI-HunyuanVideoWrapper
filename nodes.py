@@ -923,7 +923,7 @@ class HyVideoSampler:
         target_width = align_to(width, 16)
 
         freqs_cos, freqs_sin = get_rotary_pos_embed(
-            model["pipe"].transformer, num_frames, target_height, target_width
+            transformer, num_frames, target_height, target_width
         )
         n_tokens = freqs_cos.shape[0]
 

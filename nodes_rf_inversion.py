@@ -133,7 +133,6 @@ class HyVideoInverseSampler:
         elif model["manual_offloading"]:
             transformer.to(device)
 
-        mm.unload_all_models()
         mm.soft_empty_cache()
         gc.collect()
         
@@ -334,7 +333,6 @@ class HyVideoReSampler:
         elif model["manual_offloading"]:
             transformer.to(device)
 
-        mm.unload_all_models()
         mm.soft_empty_cache()
         gc.collect()
         
