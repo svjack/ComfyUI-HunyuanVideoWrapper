@@ -74,16 +74,25 @@ def get_rotary_pos_embed(transformer, video_length, height, width):
 
 def filter_state_dict_by_blocks(state_dict, blocks_mapping):
     filtered_dict = {}
-    
+
     for key in state_dict:
         if 'double_blocks.' in key or 'single_blocks.' in key:
             block_pattern = key.split('diffusion_model.')[1].split('.', 2)[0:2]
             block_key = f'{block_pattern[0]}.{block_pattern[1]}.'
-            
+
             if block_key in blocks_mapping:
                 filtered_dict[key] = state_dict[key]
-           
+
     return filtered_dict
+
+def standardize_lora_key_format(lora_sd):
+    new_sd = {}
+    for k, v in lora_sd.items():
+        # Diffusers format
+        if k.startswith('transformer.'):
+            k = k.replace('transformer.', 'diffusion_model.')
+        new_sd[k] = v
+    return new_sd
 
 class HyVideoLoraBlockEdit:
     def __init__(self):
@@ -101,7 +110,7 @@ class HyVideoLoraBlockEdit:
             arg_dict["single_blocks.{}.".format(i)] = argument
 
         return {"required": arg_dict}
-    
+
     RETURN_TYPES = ("SELECTEDBLOCKS", )
     RETURN_NAMES = ("blocks", )
     OUTPUT_TOOLTIPS = ("The modified diffusion model.",)
@@ -118,7 +127,7 @@ class HyVideoLoraSelect:
     def INPUT_TYPES(s):
         return {
             "required": {
-               "lora": (folder_paths.get_filename_list("loras"), 
+               "lora": (folder_paths.get_filename_list("loras"),
                 {"tooltip": "LORA models are expected to be in ComfyUI/models/loras with .safetensors extension"}),
                 "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.0001, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
             },
@@ -146,10 +155,10 @@ class HyVideoLoraSelect:
         }
         if prev_lora is not None:
             loras_list.extend(prev_lora)
-            
+
         loras_list.append(lora)
         return (loras_list,)
-    
+
 class HyVideoBlockSwap:
     @classmethod
     def INPUT_TYPES(s):
@@ -308,7 +317,7 @@ class HyVideoModelLoader:
             progress_bar_config=None,
             base_dtype=base_dtype
         )
-        
+
         if not "torchao" in quantization:
             log.info("Using accelerate to load and assign model weights to device...")
             if quantization == "fp8_e4m3fn" or quantization == "fp8_e4m3fn_fast":
@@ -319,7 +328,7 @@ class HyVideoModelLoader:
             for name, param in transformer.named_parameters():
                 dtype_to_use = base_dtype if any(keyword in name for keyword in params_to_keep) else dtype
                 set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=dtype_to_use, value=sd[name])
-            
+
             comfy_model.diffusion_model = transformer
             patcher = comfy.model_patcher.ModelPatcher(comfy_model, device, offload_device)
 
@@ -327,11 +336,12 @@ class HyVideoModelLoader:
                 from comfy.sd import load_lora_for_models
                 for l in lora:
                     lora_path = l["path"]
-                    lora_strength = l["strength"]               
+                    lora_strength = l["strength"]
                     lora_sd = load_torch_file(lora_path, safe_load=True)
+                    lora_sd = standardize_lora_key_format(lora_sd)
                     if l["blocks"]:
                         lora_sd = filter_state_dict_by_blocks(lora_sd, l["blocks"])
-                   
+
                     #for k in lora_sd.keys():
                      #   print(k)
 
@@ -399,8 +409,9 @@ class HyVideoModelLoader:
                 from comfy.sd import load_lora_for_models
                 for l in lora:
                     lora_path = l["path"]
-                    lora_strength = l["strength"]               
+                    lora_strength = l["strength"]
                     lora_sd = load_torch_file(lora_path, safe_load=True)
+                    lora_sd = standardize_lora_key_format(lora_sd)
                     patcher, _ = load_lora_for_models(patcher, None, lora_sd, lora_strength, 0)
 
             comfy.model_management.load_models_gpu([patcher])
