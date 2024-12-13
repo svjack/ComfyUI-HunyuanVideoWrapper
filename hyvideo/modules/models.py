@@ -665,7 +665,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         out = {}
         img = x
-        txt = text_states
+        txt = text_states.to(x.device)
         _, _, ot, oh, ow = x.shape
         tt, th, tw = (
             ot // self.patch_size[0],
@@ -678,7 +678,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
 
         # text modulation
         if text_states_2 is not None:
-            vec = vec + self.vector_in(text_states_2)
+            vec = vec + self.vector_in(text_states_2.to(x.device))
 
         # guidance modulation
         if self.guidance_embed:
@@ -700,7 +700,7 @@ class HYVideoDiffusionTransformer(ModelMixin, ConfigMixin):
         if self.text_projection == "linear":
             txt = self.txt_in(txt)
         elif self.text_projection == "single_refiner":
-            txt = self.txt_in(txt, t, text_mask if self.use_attention_mask else None)
+            txt = self.txt_in(txt, t, text_mask.to(x.device) if self.use_attention_mask else None)
         else:
             raise NotImplementedError(
                 f"Unsupported text_projection: {self.text_projection}"
