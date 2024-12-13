@@ -263,6 +263,8 @@ class HyVideoModelLoader:
     def loadmodel(self, model, base_precision, load_device,  quantization,
                   compile_args=None, attention_mode="sdpa", block_swap_args=None, lora=None):
         transformer = None
+        mm.unload_all_models()
+        mm.soft_empty_cache()
         manual_offloading = True
         if "sage" in attention_mode:
             try:
@@ -274,12 +276,11 @@ class HyVideoModelLoader:
         offload_device = mm.unet_offload_device()
         manual_offloading = True
         transformer_load_device = device if load_device == "main_device" else offload_device
-        mm.soft_empty_cache()
-
+        
         base_dtype = {"fp8_e4m3fn": torch.float8_e4m3fn, "fp8_e4m3fn_fast": torch.float8_e4m3fn, "bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[base_precision]
 
         model_path = folder_paths.get_full_path_or_raise("diffusion_models", model)
-        sd = load_torch_file(model_path, device=offload_device)
+        sd = load_torch_file(model_path, device=transformer_load_device)
 
         in_channels = out_channels = 16
         factor_kwargs = {"device": transformer_load_device, "dtype": base_dtype}
@@ -334,6 +335,10 @@ class HyVideoModelLoader:
 
             comfy_model.diffusion_model = transformer
             patcher = comfy.model_patcher.ModelPatcher(comfy_model, device, offload_device)
+
+            del sd
+            gc.collect()
+            mm.soft_empty_cache()
 
             if lora is not None:
                 from comfy.sd import load_lora_for_models
@@ -450,8 +455,8 @@ class HyVideoModelLoader:
                 print(name, param.dtype)
                 #param.data = param.data.to(self.vae_dtype).to(device)
 
-        del sd
-        mm.soft_empty_cache()
+            del sd
+            mm.soft_empty_cache()
 
         patcher.model["pipe"] = pipe
         patcher.model["dtype"] = base_dtype
