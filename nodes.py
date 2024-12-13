@@ -4,6 +4,7 @@ import json
 import gc
 from .utils import log, print_memory
 from diffusers.video_processor import VideoProcessor
+from typing import List, Dict, Any, Tuple
 
 from .hyvideo.constants import PROMPT_TEMPLATE
 from .hyvideo.text_encoder import TextEncoder
@@ -680,13 +681,13 @@ class HyVideoTextEncode:
         return {"required": {
             "text_encoders": ("HYVIDTEXTENCODER",),
             "prompt": ("STRING", {"default": "", "multiline": True} ),
-            #"negative_prompt": ("STRING", {"default": "", "multiline": True}),
             },
             "optional": {
                 "force_offload": ("BOOLEAN", {"default": True}),
                 "prompt_template": (["video", "image", "custom", "disabled"], {"default": "video", "tooltip": "Use the default prompt templates for the llm text encoder"}),
                 "custom_prompt_template": ("PROMPT_TEMPLATE", {"default": PROMPT_TEMPLATE["dit-llm-encode-video"], "multiline": True}),
                 "clip_l": ("CLIP", {"tooltip": "Use comfy clip model instead, in this case the text encoder loader's clip_l should be disabled"}),
+                "hyvid_cfg": ("HYVID_CFG", ),
             }
         }
 
@@ -695,7 +696,7 @@ class HyVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "HunyuanVideoWrapper"
 
-    def process(self, text_encoders, prompt, force_offload=True, prompt_template="video", custom_prompt_template=None, clip_l=None):
+    def process(self, text_encoders, prompt, force_offload=True, prompt_template="video", custom_prompt_template=None, clip_l=None, hyvid_cfg=None):
         device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
 
@@ -705,7 +706,12 @@ class HyVideoTextEncode:
         else:
             text_encoder_2 = None
 
-        negative_prompt = None
+        if hyvid_cfg is not None:
+            negative_prompt = hyvid_cfg["negative_prompt"]
+            do_classifier_free_guidance = True
+        else:
+            do_classifier_free_guidance = False
+            negative_prompt = None
 
         if prompt_template != "disabled":
             if prompt_template == "custom":
@@ -730,7 +736,6 @@ class HyVideoTextEncode:
         def encode_prompt(self, prompt, negative_prompt, text_encoder):
             batch_size = 1
             num_videos_per_prompt = 1
-            do_classifier_free_guidance = False # not implemented, for now we only have cfg distilled model
 
             text_inputs = text_encoder.text2tokens(prompt, prompt_template=prompt_template_dict)
 
@@ -749,84 +754,48 @@ class HyVideoTextEncode:
 
             prompt_embeds = prompt_embeds.to(dtype=text_encoder.dtype, device=device)
 
-            # if prompt_embeds.ndim == 2:
-            #     bs_embed, _ = prompt_embeds.shape
-            #     # duplicate text embeddings for each generation per prompt, using mps friendly method
-            #     prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt)
-            #     prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, -1)
-            # else:
-            #     bs_embed, seq_len, _ = prompt_embeds.shape
-            #     # duplicate text embeddings for each generation per prompt, using mps friendly method
-            #     prompt_embeds = prompt_embeds.repeat(1, num_videos_per_prompt, 1)
-            #     prompt_embeds = prompt_embeds.view(
-            #         bs_embed * num_videos_per_prompt, seq_len, -1
-            #     )
-
             # get unconditional embeddings for classifier free guidance
-            # if do_classifier_free_guidance:
-            #     uncond_tokens: List[str]
-            #     if negative_prompt is None:
-            #         uncond_tokens = [""] * batch_size
-            #     elif prompt is not None and type(prompt) is not type(negative_prompt):
-            #         raise TypeError(
-            #             f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
-            #             f" {type(prompt)}."
-            #         )
-            #     elif isinstance(negative_prompt, str):
-            #         uncond_tokens = [negative_prompt]
-            #     elif batch_size != len(negative_prompt):
-            #         raise ValueError(
-            #             f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
-            #             f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
-            #             " the batch size of `prompt`."
-            #         )
-            #     else:
-            #         uncond_tokens = negative_prompt
+            if do_classifier_free_guidance:
+                uncond_tokens: List[str]
+                if negative_prompt is None:
+                    uncond_tokens = [""] * batch_size
+                elif prompt is not None and type(prompt) is not type(negative_prompt):
+                    raise TypeError(
+                        f"`negative_prompt` should be the same type to `prompt`, but got {type(negative_prompt)} !="
+                        f" {type(prompt)}."
+                    )
+                elif isinstance(negative_prompt, str):
+                    uncond_tokens = [negative_prompt]
+                elif batch_size != len(negative_prompt):
+                    raise ValueError(
+                        f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but `prompt`:"
+                        f" {prompt} has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
+                        " the batch size of `prompt`."
+                    )
+                else:
+                    uncond_tokens = negative_prompt
 
-            #     # max_length = prompt_embeds.shape[1]
-            #     uncond_input = text_encoder.text2tokens(uncond_tokens, data_type=data_type)
+                # max_length = prompt_embeds.shape[1]
+                uncond_input = text_encoder.text2tokens(uncond_tokens, prompt_template=prompt_template_dict)
 
-            #     negative_prompt_outputs = text_encoder.encode(
-            #         uncond_input, data_type=data_type, device=device
-            #     )
-            #     negative_prompt_embeds = negative_prompt_outputs.hidden_state
+                negative_prompt_outputs = text_encoder.encode(
+                    uncond_input, prompt_template=prompt_template_dict, device=device
+                )
+                negative_prompt_embeds = negative_prompt_outputs.hidden_state
 
-            #     negative_attention_mask = negative_prompt_outputs.attention_mask
-            #     if negative_attention_mask is not None:
-            #         negative_attention_mask = negative_attention_mask.to(device)
-            #         _, seq_len = negative_attention_mask.shape
-            #         negative_attention_mask = negative_attention_mask.repeat(
-            #             1, num_videos_per_prompt
-            #         )
-            #         negative_attention_mask = negative_attention_mask.view(
-            #             batch_size * num_videos_per_prompt, seq_len
-            #         )
-            # else:
-            negative_prompt_embeds = None
-            negative_attention_mask = None
-
-            # if do_classifier_free_guidance:
-            #     # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            #     seq_len = negative_prompt_embeds.shape[1]
-
-            #     negative_prompt_embeds = negative_prompt_embeds.to(
-            #         dtype=prompt_embeds_dtype, device=device
-            #     )
-
-            #     if negative_prompt_embeds.ndim == 2:
-            #         negative_prompt_embeds = negative_prompt_embeds.repeat(
-            #             1, num_videos_per_prompt
-            #         )
-            #         negative_prompt_embeds = negative_prompt_embeds.view(
-            #             batch_size * num_videos_per_prompt, -1
-            #         )
-            #     else:
-            #         negative_prompt_embeds = negative_prompt_embeds.repeat(
-            #             1, num_videos_per_prompt, 1
-            #         )
-            #         negative_prompt_embeds = negative_prompt_embeds.view(
-            #             batch_size * num_videos_per_prompt, seq_len, -1
-            #         )
+                negative_attention_mask = negative_prompt_outputs.attention_mask
+                if negative_attention_mask is not None:
+                    negative_attention_mask = negative_attention_mask.to(device)
+                    _, seq_len = negative_attention_mask.shape
+                    negative_attention_mask = negative_attention_mask.repeat(
+                        1, num_videos_per_prompt
+                    )
+                    negative_attention_mask = negative_attention_mask.view(
+                        batch_size * num_videos_per_prompt, seq_len
+                    )
+            else:
+                negative_prompt_embeds = None
+                negative_attention_mask = None
 
             return (
                 prompt_embeds,
@@ -872,9 +841,41 @@ class HyVideoTextEncode:
                 "negative_prompt_embeds_2": negative_prompt_embeds_2,
                 "attention_mask_2": attention_mask_2,
                 "negative_attention_mask_2": negative_attention_mask_2,
+                "cfg": torch.tensor(hyvid_cfg["cfg"]) if hyvid_cfg is not None else None,
+                "start_percent": torch.tensor(hyvid_cfg["start_percent"]) if hyvid_cfg is not None else None,
+                "end_percent": torch.tensor(hyvid_cfg["end_percent"]) if hyvid_cfg is not None else None,
             }
         return (prompt_embeds_dict,)
 
+# region CFG    
+class HyVideoCFG:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "negative_prompt": ("STRING", {"default": "Aerial view, aerial view, overexposed, low quality, deformation, a poor composition, bad hands, bad teeth, bad eyes, bad limbs, distortion", "multiline": True} ),
+            "cfg": ("FLOAT", {"default": 2.0, "min": 0.0, "max": 100.0, "step": 0.01, "tooltip": "guidance scale"} ),
+            "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.01, "tooltip": "Start percentage of the steps to apply CFG, rest of the steps use guidance_embeds"} ),
+            "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step": 0.01, "tooltip": "End percentage of the steps to apply CFG, rest of the steps use guidance_embeds"} ),
+            },
+        }
+
+    RETURN_TYPES = ("HYVID_CFG", )
+    RETURN_NAMES = ("hyvid_cfg",)
+    FUNCTION = "process"
+    CATEGORY = "HunyuanVideoWrapper"
+    DESCRIPTION = "To use CFG with HunyuanVideo"
+
+    def process(self, negative_prompt, cfg, start_percent, end_percent):
+        cfg_dict = {
+            "negative_prompt": negative_prompt,
+            "cfg": cfg,
+            "start_percent": start_percent,
+            "end_percent": end_percent,
+        }
+        
+        return (cfg_dict,)
+
+#region embeds
 class HyVideoTextEmbedsSave:
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
@@ -943,7 +944,10 @@ class HyVideoTextEmbedsLoad:
             "prompt_embeds_2": loaded_tensors.get("prompt_embeds_2", None),
             "negative_prompt_embeds_2": loaded_tensors.get("negative_prompt_embeds_2", None),
             "attention_mask_2": loaded_tensors.get("attention_mask_2", None),
-            "negative_attention_mask_2": loaded_tensors.get("negative_attention_mask_2", None)
+            "negative_attention_mask_2": loaded_tensors.get("negative_attention_mask_2", None),
+            "cfg": loaded_tensors.get("cfg", None),
+            "start_percent": loaded_tensors.get("start_percent", None),
+            "end_percent": loaded_tensors.get("end_percent", None),
         }
         
         return (prompt_embeds_dict,)
@@ -986,11 +990,21 @@ class HyVideoSampler:
         dtype = model["dtype"]
         transformer = model["pipe"].transformer
 
+        #handle STG
         if stg_args is not None:
             if stg_args["stg_mode"] == "STG-A" and transformer.attention_mode != "sdpa":
                 raise ValueError(
                     f"STG-A requires attention_mode to be 'sdpa', but got {transformer.attention_mode}."
             )
+        #handle CFG
+        if hyvid_embeds.get("cfg") is not None:
+            cfg = float(hyvid_embeds.get("cfg", 1.0))
+            cfg_start_percent = float(hyvid_embeds.get("start_percent", 0.0))
+            cfg_end_percent = float(hyvid_embeds.get("end_percent", 1.0))
+        else:
+            cfg = 1.0
+            cfg_start_percent = 0.0
+            cfg_end_percent = 1.0
 
         generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
@@ -1015,15 +1029,12 @@ class HyVideoSampler:
         )
         n_tokens = freqs_cos.shape[0]
 
+       
+
         model["pipe"].scheduler.shift = flow_shift
 
-        # autocast_context = torch.autocast(
-        #     mm.get_autocast_device(device), dtype=dtype
-        # ) if any(q in model["quantization"] for q in ("e4m3fn", "GGUF")) else nullcontext()
-        #with autocast_context:
         if model["block_swap_args"] is not None:
             for name, param in transformer.named_parameters():
-                #print(name, param.data.device)
                 if "single" not in name and "double" not in name:
                     param.data = param.data.to(device)
 
@@ -1034,8 +1045,6 @@ class HyVideoSampler:
                 offload_img_in = model["block_swap_args"]["offload_img_in"],
             )
 
-            mm.soft_empty_cache()
-            gc.collect()
         elif model["manual_offloading"]:
             transformer.to(device)
 
@@ -1055,7 +1064,9 @@ class HyVideoSampler:
             height = target_height,
             width = target_width,
             video_length = num_frames,
-            guidance_scale=1.0,
+            guidance_scale=cfg,
+            cfg_start_percent=cfg_start_percent,
+            cfg_end_percent=cfg_end_percent,
             embedded_guidance_scale=embedded_guidance_scale,
             latents=samples["samples"] if samples is not None else None,
             denoise_strength=denoise_strength,
@@ -1306,6 +1317,7 @@ NODE_CLASS_MAPPINGS = {
     "HyVideoBlockSwap": HyVideoBlockSwap,
     "HyVideoTorchCompileSettings": HyVideoTorchCompileSettings,
     "HyVideoSTG": HyVideoSTG,
+    "HyVideoCFG": HyVideoCFG,
     "HyVideoCustomPromptTemplate": HyVideoCustomPromptTemplate,
     "HyVideoLatentPreview": HyVideoLatentPreview,
     "HyVideoLoraSelect": HyVideoLoraSelect,
@@ -1324,6 +1336,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "HyVideoBlockSwap": "HunyuanVideo BlockSwap",
     "HyVideoTorchCompileSettings": "HunyuanVideo Torch Compile Settings",
     "HyVideoSTG": "HunyuanVideo STG",
+    "HyVideoCFG": "HunyuanVideo CFG",
     "HyVideoCustomPromptTemplate": "HunyuanVideo Custom Prompt Template",
     "HyVideoLatentPreview": "HunyuanVideo Latent Preview",
     "HyVideoLoraSelect": "HunyuanVideo Lora Select",

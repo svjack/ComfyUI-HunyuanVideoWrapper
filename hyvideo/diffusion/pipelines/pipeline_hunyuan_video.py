@@ -305,7 +305,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
         sigmas: List[float] = None,
-        guidance_scale: float = 7.5,
+        guidance_scale: float = 1.0,
+        cfg_start_percent: float = 0.0,
+        cfg_end_percent: float = 1.0,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         denoise_strength: float = 1.0,
@@ -424,8 +426,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         negative_prompt_mask = prompt_embed_dict["negative_attention_mask"]
         prompt_embeds_2 = prompt_embed_dict["prompt_embeds_2"]
         negative_prompt_embeds_2 = prompt_embed_dict["negative_prompt_embeds_2"]
-        #prompt_mask_2 = prompt_embed_dict["attention_mask_2"]
-        #negative_prompt_mask_2 = prompt_embed_dict["negative_attention_mask_2"]
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -436,8 +436,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 prompt_mask = torch.cat([negative_prompt_mask, prompt_mask])
             if prompt_embeds_2 is not None:
                 prompt_embeds_2 = torch.cat([negative_prompt_embeds_2, prompt_embeds_2])
-            #if prompt_mask_2 is not None:
-            #    prompt_mask_2 = torch.cat([negative_prompt_mask_2, prompt_mask_2])
         elif self.do_classifier_free_guidance and self.do_spatio_temporal_guidance:
             prompt_embeds = torch.cat(
                 [negative_prompt_embeds, prompt_embeds, prompt_embeds]
@@ -448,19 +446,12 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 prompt_embeds_2 = torch.cat(
                     [negative_prompt_embeds_2, prompt_embeds_2, prompt_embeds_2]
                 )
-            #if prompt_mask_2 is not None:
-            #    prompt_mask_2 = torch.cat(
-            #        [negative_prompt_mask_2, prompt_mask_2, prompt_mask_2]
-            #    )
         elif self.do_spatio_temporal_guidance:
             prompt_embeds = torch.cat([prompt_embeds, prompt_embeds])
             if prompt_mask is not None:
                 prompt_mask = torch.cat([prompt_mask, prompt_mask])
             if prompt_embeds_2 is not None:
-                prompt_embeds_2 = torch.cat([prompt_embeds_2, prompt_embeds_2])
-            #if prompt_mask_2 is not None:
-            #    prompt_mask_2 = torch.cat([prompt_mask_2, prompt_mask_2])
-            
+                prompt_embeds_2 = torch.cat([prompt_embeds_2, prompt_embeds_2])            
 
         # 4. Prepare timesteps
         extra_set_timesteps_kwargs = self.prepare_extra_func_kwargs(
@@ -521,6 +512,13 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 if self.interrupt:
                     continue
 
+                latent_model_input = latents
+                input_prompt_embeds = prompt_embeds
+                input_prompt_mask = prompt_mask 
+                input_prompt_embeds_2 = prompt_embeds_2
+                cfg_enabled = False
+                stg_enabled = False
+
                 current_step_percentage = i / len(timesteps)
                 if self.do_spatio_temporal_guidance:
                     if stg_start_percent <= current_step_percentage <= stg_end_percent:
@@ -530,38 +528,43 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                         else:
                             latent_model_input = torch.cat([latents] * 2)
                     else:
-                        stg_enabled = False
                         stg_mode = None
                         stg_block_idx = -1
-                        prompt_embeds = prompt_embeds[0].unsqueeze(0)
-                        prompt_mask = prompt_mask[0].unsqueeze(0)
-                        prompt_embeds_2 = prompt_embeds_2[0].unsqueeze(0)
+                        input_prompt_embeds = prompt_embeds[0].unsqueeze(0)
+                        input_prompt_mask = prompt_mask[0].unsqueeze(0)
+                        input_prompt_embeds_2 = prompt_embeds_2[0].unsqueeze(0)
                         latent_model_input = latents
                 else:
                     stg_enabled = False
                     # expand the latents if we are doing classifier free guidance
-                    latent_model_input = (
-                    torch.cat([latents] * 2)
-                    if self.do_classifier_free_guidance
-                    else latents
-                )
+                    
+                    if self.do_classifier_free_guidance:
+                        if cfg_start_percent <= current_step_percentage <= cfg_end_percent:
+                            #print("applying CFG at step", i + 1, "with strength", guidance_scale)
+                            latent_model_input = torch.cat([latents] * 2)
+                            cfg_enabled = True
+                        else:
+                            input_prompt_embeds = prompt_embeds[1].unsqueeze(0)
+                            input_prompt_mask = prompt_mask[1].unsqueeze(0)
+                            input_prompt_embeds_2 = prompt_embeds_2[1].unsqueeze(0)
 
                 latent_model_input = self.scheduler.scale_model_input(
                     latent_model_input, t
                 )
 
                 t_expand = t.repeat(latent_model_input.shape[0])
-                guidance_expand = (
-                    torch.tensor(
-                        [embedded_guidance_scale] * latent_model_input.shape[0],
-                        dtype=torch.float32,
-                        device=device,
-                    ).to(self.base_dtype)
-                    * 1000.0
-                    if embedded_guidance_scale is not None
-                    else None
-                )
-
+                if embedded_guidance_scale is not None and not cfg_enabled:
+                    guidance_expand = (
+                        torch.tensor(
+                            [embedded_guidance_scale] * latent_model_input.shape[0],
+                            dtype=self.base_dtype,
+                            device=device,
+                        ) * 1000.0
+                    )
+                else:
+                    guidance_expand = None
+                
+                #print("latent_model_input", latent_model_input.shape, "guidance_expand", guidance_expand)
                 # predict the noise residual
                 with torch.autocast(
                     device_type="cuda", dtype=self.base_dtype, enabled=True
@@ -569,9 +572,9 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     noise_pred = self.transformer(  # For an input image (129, 192, 336) (1, 256, 256)
                         latent_model_input,  # [2, 16, 33, 24, 42]
                         t_expand,  # [2]
-                        text_states=prompt_embeds,  # [2, 256, 4096]
-                        text_mask=prompt_mask,  # [2, 256]
-                        text_states_2=prompt_embeds_2,  # [2, 768]
+                        text_states=input_prompt_embeds,  # [2, 256, 4096]
+                        text_mask=input_prompt_mask,  # [2, 256]
+                        text_states_2=input_prompt_embeds_2,  # [2, 768]
                         freqs_cos=freqs_cis[0],  # [seqlen, head_dim]
                         freqs_sin=freqs_cis[1],  # [seqlen, head_dim]
                         guidance=guidance_expand,
@@ -581,7 +584,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                     )["x"]
 
                 # perform guidance
-                if self.do_classifier_free_guidance and not self.do_spatio_temporal_guidance:
+                if cfg_enabled and not self.do_spatio_temporal_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (
                         noise_pred_text - noise_pred_uncond
