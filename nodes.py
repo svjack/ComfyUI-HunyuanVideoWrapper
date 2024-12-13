@@ -270,7 +270,7 @@ class HyVideoModelLoader:
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         manual_offloading = True
-        transformer_load_device = device if load_device == "main_device" or lora is None else offload_device
+        transformer_load_device = device if load_device == "main_device" and lora is None else offload_device
         mm.soft_empty_cache()
 
         base_dtype = {"fp8_e4m3fn": torch.float8_e4m3fn, "fp8_e4m3fn_fast": torch.float8_e4m3fn, "bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[base_precision]
