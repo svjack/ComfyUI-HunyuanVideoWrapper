@@ -270,7 +270,7 @@ class HyVideoModelLoader:
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         manual_offloading = True
-        transformer_load_device = device if load_device == "main_device" and lora is None else offload_device
+        transformer_load_device = device if load_device == "main_device" else offload_device
         mm.soft_empty_cache()
 
         base_dtype = {"fp8_e4m3fn": torch.float8_e4m3fn, "fp8_e4m3fn_fast": torch.float8_e4m3fn, "bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[base_precision]
@@ -335,6 +335,7 @@ class HyVideoModelLoader:
             if lora is not None:
                 from comfy.sd import load_lora_for_models
                 for l in lora:
+                    log.info(f"Loading LoRA: {l['name']} with strength: {l['strength']}")
                     lora_path = l["path"]
                     lora_strength = l["strength"]
                     lora_sd = load_torch_file(lora_path, safe_load=True)
@@ -347,7 +348,9 @@ class HyVideoModelLoader:
 
                     patcher, _ = load_lora_for_models(patcher, None, lora_sd, lora_strength, 0)
 
-            comfy.model_management.load_models_gpu([patcher])
+            comfy.model_management.load_model_gpu(patcher)
+            if load_device == "offload_device":
+                patcher.model.diffusion_model.to(offload_device)
 
             if quantization == "fp8_e4m3fn_fast":
                 from .fp8_optimization import convert_fp8_linear
