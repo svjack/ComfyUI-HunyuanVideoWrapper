@@ -451,7 +451,12 @@ class HunyuanVideoPipeline(DiffusionPipeline):
             if prompt_mask is not None:
                 prompt_mask = torch.cat([prompt_mask, prompt_mask])
             if prompt_embeds_2 is not None:
-                prompt_embeds_2 = torch.cat([prompt_embeds_2, prompt_embeds_2])            
+                prompt_embeds_2 = torch.cat([prompt_embeds_2, prompt_embeds_2])
+
+        prompt_embeds = prompt_embeds.to(device = device, dtype = self.base_dtype)
+        prompt_mask = prompt_mask.to(device)
+        if prompt_embeds_2 is not None:
+            prompt_embeds_2 = prompt_embeds_2.to(device = device, dtype = self.base_dtype)
 
         # 4. Prepare timesteps
         extra_set_timesteps_kwargs = self.prepare_extra_func_kwargs(
@@ -564,7 +569,6 @@ class HunyuanVideoPipeline(DiffusionPipeline):
                 else:
                     guidance_expand = None
                 
-                #print("latent_model_input", latent_model_input.shape, "guidance_expand", guidance_expand)
                 # predict the noise residual
                 with torch.autocast(
                     device_type="cuda", dtype=self.base_dtype, enabled=True

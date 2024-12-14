@@ -848,6 +848,8 @@ class HyVideoTextEncode:
                 tokens = clip_l.tokenize(negative_prompt, return_word_ids=True)
                 negative_prompt_embeds_2 = clip_l.encode_from_tokens(tokens, return_pooled=True, return_dict=False)[1]
                 negative_prompt_embeds_2 = negative_prompt_embeds_2.to(device=device)
+            else:
+                negative_prompt_embeds_2 = None
             attention_mask_2, negative_attention_mask_2 = None, None
 
             if force_offload:
