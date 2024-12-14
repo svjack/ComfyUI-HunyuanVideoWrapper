@@ -576,7 +576,7 @@ class DownloadAndLoadHyVideoTextEncoder:
             "optional": {
                 "apply_final_norm": ("BOOLEAN", {"default": False}),
                 "hidden_state_skip_layer": ("INT", {"default": 2}),
-                "quantization": (['disabled', 'bnb_nf4'], {"default": 'disabled'}),
+                "quantization": (['disabled', 'bnb_nf4', "fp8_e4m3fn"], {"default": 'disabled'}),
             }
         }
 
@@ -591,6 +591,7 @@ class DownloadAndLoadHyVideoTextEncoder:
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
+        quantization_config = None
         if quantization == "bnb_nf4":
             from transformers import BitsAndBytesConfig
 
@@ -600,8 +601,7 @@ class DownloadAndLoadHyVideoTextEncoder:
             bnb_4bit_use_double_quant=True,
             bnb_4bit_compute_dtype=torch.bfloat16
             )
-        else:
-            quantization_config = None
+            
         if clip_model != "disabled":
             clip_model_path = os.path.join(folder_paths.models_dir, "clip", "clip-vit-large-patch14")
             if not os.path.exists(clip_model_path):
@@ -650,7 +650,25 @@ class DownloadAndLoadHyVideoTextEncoder:
             dtype=dtype,
             quantization_config=quantization_config
         )
+        if quantization == "fp8_e4m3fn":
+            text_encoder.is_fp8 = True
+            text_encoder.to(torch.float8_e4m3fn)
+            def forward_hook(module):
+                def forward(hidden_states):
+                    input_dtype = hidden_states.dtype
+                    hidden_states = hidden_states.to(torch.float32)
+                    variance = hidden_states.pow(2).mean(-1, keepdim=True)
+                    hidden_states = hidden_states * torch.rsqrt(variance + module.variance_epsilon)
+                    return module.weight.to(input_dtype) * hidden_states.to(input_dtype)
+                return forward
 
+            for module in text_encoder.model.modules():
+                if module.__class__.__name__ in ["Embedding"]:
+                    module.to(dtype)
+                if module.__class__.__name__ in ["LlamaRMSNorm"]:
+                    module.forward = forward_hook(module)
+        else:
+            text_encoder.is_fp8 = False
 
         hyvid_text_encoders = {
             "text_encoder": text_encoder,
@@ -743,7 +761,6 @@ class HyVideoTextEncode:
             num_videos_per_prompt = 1
 
             text_inputs = text_encoder.text2tokens(prompt, prompt_template=prompt_template_dict)
-
             prompt_outputs = text_encoder.encode(text_inputs, prompt_template=prompt_template_dict, device=device)
             prompt_embeds = prompt_outputs.hidden_state
 
@@ -809,7 +826,8 @@ class HyVideoTextEncode:
                 negative_attention_mask,
             )
         text_encoder_1.to(device)
-        prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask = encode_prompt(self, prompt, negative_prompt, text_encoder_1)
+        with torch.autocast(device_type=mm.get_autocast_device(device), dtype=text_encoder_1.dtype, enabled=text_encoder_1.is_fp8):
+            prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask = encode_prompt(self, prompt, negative_prompt, text_encoder_1)
         if force_offload:
             text_encoder_1.to(offload_device)
             mm.soft_empty_cache()
@@ -826,7 +844,11 @@ class HyVideoTextEncode:
             prompt_embeds_2 = clip_l.encode_from_tokens(tokens, return_pooled=True, return_dict=False)[1]
             prompt_embeds_2 = prompt_embeds_2.to(device=device)
 
-            negative_prompt_embeds_2, attention_mask_2, negative_attention_mask_2 = None, None, None
+            if negative_prompt is not None:
+                tokens = clip_l.tokenize(negative_prompt, return_word_ids=True)
+                negative_prompt_embeds_2 = clip_l.encode_from_tokens(tokens, return_pooled=True, return_dict=False)[1]
+                negative_prompt_embeds_2 = negative_prompt_embeds_2.to(device=device)
+            attention_mask_2, negative_attention_mask_2 = None, None
 
             if force_offload:
                 clip_l.cond_stage_model.to(offload_device)

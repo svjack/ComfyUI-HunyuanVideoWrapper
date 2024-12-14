@@ -45,7 +45,7 @@ def load_text_encoder(
         raise ValueError(f"Unsupported text encoder type: {text_encoder_type}")
     # from_pretrained will ensure that the model is in eval mode.
 
-    if text_encoder_precision is not None and quantization_config is None:
+    if text_encoder_precision is not None and quantization_config is None and dtype != torch.float8_e4m3fn:
         text_encoder = text_encoder.to(dtype)
 
     text_encoder.requires_grad_(False)
@@ -143,6 +143,7 @@ class TextEncoder(nn.Module):
         self.apply_final_norm = apply_final_norm
         self.reproduce = reproduce
         self.logger = logger
+        self.is_fp8 = False
 
         if "t5" in text_encoder_type:
             self.output_key = output_key or "last_hidden_state"
