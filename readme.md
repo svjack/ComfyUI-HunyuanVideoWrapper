@@ -309,6 +309,64 @@ https://github.com/user-attachments/assets/7573165e-9665-405d-890a-8dd3da272815
 
 <br/>
 
+### Genshin Impact Character XiangLing LoRA Example (early tuned version)
+
+1. **Download the Makima LoRA Model:**
+
+   Download the Makima LoRA model from Huggingface:
+
+   - [Xiangling Character LoRA](https://huggingface.co/svjack/Genshin_Impact_XiangLing_HunyuanVideo_lora_early)
+
+   ```bash
+   xiangling_test_epoch4.safetensors
+   ```
+
+   Copy the model to the `loras` directory:
+
+   ```bash
+   cp xiangling_test_epoch4.safetensors ComfyUI/models/loras
+   ```
+
+4. **Run the Workflow:**
+
+   Create a Python script `run_t2v_xiangling_lora.py`:
+
+   ```python
+   #### character do something (seed 42)
+   from comfy_script.runtime import *
+   load()
+   from comfy_script.runtime.nodes import *
+   with Workflow():
+       vae = HyVideoVAELoader(r'hunyuan_video_vae_bf16.safetensors', 'bf16', None)
+       lora = HyVideoLoraSelect('xiangling_test_epoch4.safetensors', 2.0, None, None)
+       model = HyVideoModelLoader(r'hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors', 'bf16', 'fp8_e4m3fn', 'offload_device', 'sdpa', None, None, lora)
+       hyvid_text_encoder = DownloadAndLoadHyVideoTextEncoder('Kijai/llava-llama-3-8b-text-encoder-tokenizer', 'openai/clip-vit-large-patch14', 'fp16', False, 2, 'disabled')
+       hyvid_embeds = HyVideoTextEncode(hyvid_text_encoder, "solo,Xiangling, cook rice in a pot genshin impact ,1girl,highres,", 'bad quality video', 'video', None, None, None)
+       samples = HyVideoSampler(model, hyvid_embeds, 478, 512, 85, 30, 6, 9, 42, 1, None, 1, None)
+       images = HyVideoDecode(vae, samples, True, 64, 256, True)
+       #_ = VHSVideoCombine(images, 24, 0, 'HunyuanVideo', 'video/h264-mp4', False, True, None, None, None)
+       _ = VHSVideoCombine(images, 24, 0, 'HunyuanVideo', 'video/h264-mp4', False, True, None, None, None,
+                           pix_fmt = 'yuv420p', crf=19, save_metadata = True, trim_to_audio = False)
+   ```
+
+   Run the script:
+
+   ```bash
+   python run_t2v_xiangling_lora.py
+   ```
+
+<br/>
+
+- prompt = "solo,Xiangling, cook rice in a pot genshin impact ,1girl,highres,"
+
+
+
+https://github.com/user-attachments/assets/f09a7bfc-08d2-41ea-86a0-85e5d048e4fe
+
+
+
+<br/>
+
 ## WORK IN PROGRESS
 
 # Update
