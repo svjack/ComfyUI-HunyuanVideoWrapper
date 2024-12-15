@@ -130,7 +130,17 @@ https://github.com/user-attachments/assets/965ded95-7143-44b6-b125-b7b088aef0d9
 
 <br/>
 
+<br/>
 
+- prompt = "high quality anime-style video of a chibi cat with big sparkling eyes, wearing a magical hat, holding a wand, and surrounded by glowing magical orbs, in a lush enchanted forest with floating cherry blossoms and a sparkling stream in the background"
+
+
+
+https://github.com/user-attachments/assets/716954d9-d61f-406b-af9b-153c7bf62972
+
+
+
+<br/>
 
 ## WORK IN PROGRESS
 
