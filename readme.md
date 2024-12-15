@@ -101,7 +101,6 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
 10. **Run the Example Script:**
 
     Create a Python script `run_t2v.py`:
-    - prompt = "high quality nature video of a red panda balancing on a bamboo stick while a bird lands on the panda's head, there's a waterfall in the background"
 
     ```python
     from comfy_script.runtime import *
@@ -124,7 +123,7 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
     python run_t2v.py
     ```
 
-
+- prompt = "high quality nature video of a red panda balancing on a bamboo stick while a bird lands on the panda's head, there's a waterfall in the background"
 https://github.com/user-attachments/assets/965ded95-7143-44b6-b125-b7b088aef0d9
 
 
