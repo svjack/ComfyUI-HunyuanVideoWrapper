@@ -1,5 +1,134 @@
 # ComfyUI wrapper nodes for [HunyuanVideo](https://github.com/Tencent/HunyuanVideo)
 
+# ComfyUI-HunyuanVideoWrapper
+
+This repository provides a wrapper for integrating HunyuanVideo into ComfyUI, allowing you to generate high-quality video content using advanced AI models.
+
+## Installation
+
+### Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- `git-lfs`
+- `cbm`
+- `ffmpeg`
+
+You can install these prerequisites using the following command:
+
+```bash
+sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
+```
+
+### Installation Steps
+
+1. **Install `comfy-cli`:**
+
+   ```bash
+   pip install comfy-cli
+   ```
+
+2. **Initialize ComfyUI:**
+
+   ```bash
+   comfy --here install
+   ```
+
+3. **Clone and Install ComfyScript:**
+
+   ```bash
+   cd ComfyUI/custom_nodes
+   git clone https://github.com/Chaoses-Ib/ComfyScript.git
+   cd ComfyScript
+   pip install -e ".[default,cli]"
+   pip uninstall aiohttp
+   pip install -U aiohttp
+   ```
+
+4. **Clone and Install ComfyUI-HunyuanVideoWrapper:**
+
+   ```bash
+   cd ../
+   git clone https://github.com/svjack/ComfyUI-HunyuanVideoWrapper
+   cd ComfyUI-HunyuanVideoWrapper
+   pip install -r requirements.txt
+   ```
+
+5. **Load ComfyScript Runtime:**
+
+   ```python
+   from comfy_script.runtime import *
+   load()
+   from comfy_script.runtime.nodes import *
+   ```
+
+6. **Install Example Dependencies:**
+
+   ```bash
+   cd examples
+   comfy node install-deps --workflow=hyvideo_t2v_example_01.json
+   ```
+
+7. **Update ComfyUI Dependencies:**
+
+   ```bash
+   cd ../../ComfyUI
+   pip install --upgrade torch torchvision torchaudio -r requirements.txt
+   ```
+
+8. **Transpile Example Workflow:**
+
+   ```bash
+   python -m comfy_script.transpile hyvideo_t2v_example_01.json
+   ```
+
+9. **Download and Place Model Files:**
+
+   Download the required model files from Hugging Face:
+
+   ```bash
+   huggingface-cli download Kijai/HunyuanVideo_comfy --local-dir ./HunyuanVideo_comfy
+   ```
+
+   Copy the downloaded files to the appropriate directories:
+
+   ```bash
+   cp -r HunyuanVideo_comfy/ .
+   cp HunyuanVideo_comfy/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors ComfyUI/models/diffusion_models
+   cp HunyuanVideo_comfy/hunyuan_video_vae_bf16.safetensors ComfyUI/models/vae
+   ```
+
+10. **Run the Example Script:**
+
+    Create a Python script `run_t2v.py`:
+
+    ```python
+    from comfy_script.runtime import *
+    load()
+    from comfy_script.runtime.nodes import *
+    with Workflow():
+        vae = HyVideoVAELoader(r'hunyuan_video_vae_bf16.safetensors', 'bf16', None)
+        model = HyVideoModelLoader(r'hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors', 'bf16', 'fp8_e4m3fn', 'offload_device', 'sdpa', None, None, None)
+        hyvid_text_encoder = DownloadAndLoadHyVideoTextEncoder('Kijai/llava-llama-3-8b-text-encoder-tokenizer', 'openai/clip-vit-large-patch14', 'fp16', False, 2, 'disabled')
+        hyvid_embeds = HyVideoTextEncode(hyvid_text_encoder, '''high quality nature video of a red panda balancing on a bamboo stick while a bird lands on the panda's head, there's a waterfall in the background''', 'bad quality video', 'video', None, None, None)
+        samples = HyVideoSampler(model, hyvid_embeds, 512, 320, 85, 30, 6, 9, 6, 1, None, 1, None)
+        images = HyVideoDecode(vae, samples, True, 64, 256, True)
+        _ = VHSVideoCombine(images, 24, 0, 'HunyuanVideo', 'video/h264-mp4', False, True, None, None, None,
+                            pix_fmt = 'yuv420p', crf=19, save_metadata = True, trim_to_audio = False)
+    ```
+
+    Run the script:
+
+    ```bash
+    python run_t2v.py
+    ```
+
+
+https://github.com/user-attachments/assets/965ded95-7143-44b6-b125-b7b088aef0d9
+
+
+
+
 ## WORK IN PROGRESS
 
 # Update
