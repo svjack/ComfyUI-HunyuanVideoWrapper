@@ -142,6 +142,173 @@ https://github.com/user-attachments/assets/716954d9-d61f-406b-af9b-153c7bf62972
 
 <br/>
 
+# ComfyUI-HunyuanVideoWrapper - Lora Integration
+
+This repository extends the functionality of **ComfyUI-HunyuanVideoWrapper** by adding support for **Lora** models, enabling the generation of high-quality video content with custom character and action LoRA models.
+
+## Lora Integration
+
+### Overview
+
+Open source is truly amazing, and **HunyuanVideo** now supports LoRA models! I recently tested **HunyuanVideo** with both **action LoRA** and **character LoRA**, and the results are fantastic.
+
+### Resources
+
+- **Repository:** [ComfyUI-HunyuanVideoWrapper](https://github.com/kijai/ComfyUI-HunyuanVideoWrapper)
+- **Workflow Example:** [HunyuanVideo LoRA Workflow](https://github.com/comfyonline/comfyonline_workflow/blob/main/hunyuanvideo%20lora%20Walking%20Animation%20Share.json)
+
+### Installation
+
+#### Step-by-Step Guide
+
+1. **Download the LoRA Model:**
+
+   Download the LoRA model from CivitAI:
+
+   - [Walking Animation LoRA](https://civitai.com/models/1032126/walking-animation-hunyuan-video?modelVersionId=1157591)
+
+   ```bash
+   kxsr_walking_anim_v1-5.safetensors
+   ```
+
+   Copy the model to the `loras` directory:
+
+   ```bash
+   cp kxsr_walking_anim_v1-5.safetensors ComfyUI/models/loras
+   ```
+
+2. **Install Workflow Dependencies:**
+
+   Install dependencies for the workflow:
+
+   ```bash
+   comfy node install-deps --workflow='hunyuanvideo lora Walking Animation Share.json'
+   ```
+
+3. **Transpile the Workflow:**
+
+   Transpile the workflow file:
+
+   ```bash
+   python -m comfy_script.transpile 'hunyuanvideo lora Walking Animation Share.json'
+   ```
+
+4. **Run the Workflow:**
+
+   Create a Python script `run_t2v_walking_lora.py`:
+
+   ```python
+   from comfy_script.runtime import *
+   load()
+   from comfy_script.runtime.nodes import *
+   with Workflow():
+       vae = HyVideoVAELoader(r'hunyuan_video_vae_bf16.safetensors', 'bf16', None)
+       lora = HyVideoLoraSelect('kxsr_walking_anim_v1-5.safetensors', 1, None, None)
+       model = HyVideoModelLoader(r'hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors', 'bf16', 'fp8_e4m3fn', 'offload_device', 'sdpa', None, None, lora)
+       hyvid_text_encoder = DownloadAndLoadHyVideoTextEncoder('Kijai/llava-llama-3-8b-text-encoder-tokenizer', 'openai/clip-vit-large-patch14', 'fp16', False, 2, 'disabled')
+       hyvid_embeds = HyVideoTextEncode(hyvid_text_encoder, "kxsr, Shrek, full body, no_crop", 'bad quality video', 'video', None, None, None)
+       samples = HyVideoSampler(model, hyvid_embeds, 512, 320, 85, 30, 6, 9, 6, 1, None, 1, None)
+       images = HyVideoDecode(vae, samples, True, 64, 256, True)
+       _ = VHSVideoCombine(images, 24, 0, 'HunyuanVideo', 'video/h264-mp4', False, True, None, None, None,
+                           pix_fmt = 'yuv420p', crf=19, save_metadata = True, trim_to_audio = False)
+   ```
+
+   Run the script:
+
+   ```bash
+   python run_t2v_walking_lora.py
+   ```
+
+<br/>
+
+- prompt = "kxsr, Shrek, full body, no_crop"
+
+
+
+https://github.com/user-attachments/assets/47dba483-a113-4872-a4b4-e6ac6098967b
+
+
+<br/>
+
+### Online Demo
+
+- **Action LoRA Demo:** [ComfyOnline - Action LoRA](https://www.comfyonline.app/explore/48aa3381-e9f7-4e16-8e41-96ff4faca263)
+- **Character LoRA Demo:** [ComfyOnline - Character LoRA](https://www.comfyonline.app/explore/65940ef3-fcde-415b-a27f-ca71cd82d6ab)
+
+### Makima Character LoRA Example
+
+1. **Download the Makima LoRA Model:**
+
+   Download the Makima LoRA model from CivitAI:
+
+   - [Makima Hunyuan Character LoRA](https://civitai.com/models/1029279/makima-hunyuan-character?modelVersionId=1154429)
+
+   ```bash
+   makima_hunyuan.safetensors
+   ```
+
+   Copy the model to the `loras` directory:
+
+   ```bash
+   cp makima_hunyuan.safetensors ComfyUI/models/loras
+   ```
+
+2. **Install Workflow Dependencies:**
+
+   Install dependencies for the workflow:
+
+   ```bash
+   comfy node install-deps --workflow='hunyuan video lora makima character.json'
+   ```
+
+3. **Transpile the Workflow:**
+
+   Transpile the workflow file:
+
+   ```bash
+   python -m comfy_script.transpile 'hunyuan video lora makima character.json'
+   ```
+
+4. **Run the Workflow:**
+
+   Create a Python script `run_t2v_makima_lora.py`:
+
+   ```python
+   from comfy_script.runtime import *
+   load()
+   from comfy_script.runtime.nodes import *
+   with Workflow():
+       vae = HyVideoVAELoader(r'hunyuan_video_vae_bf16.safetensors', 'bf16', None)
+       lora = HyVideoLoraSelect('makima_hunyuan.safetensors', 1, None, None)
+       model = HyVideoModelLoader(r'hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors', 'bf16', 'fp8_e4m3fn', 'offload_device', 'sdpa', None, None, lora)
+       hyvid_text_encoder = DownloadAndLoadHyVideoTextEncoder('Kijai/llava-llama-3-8b-text-encoder-tokenizer', 'openai/clip-vit-large-patch14', 'fp16', False, 2, 'disabled')
+       hyvid_embeds = HyVideoTextEncode(hyvid_text_encoder, "kxsr, 1 lively kxsr running on campus， cinematic, anime aesthetic", 'bad quality video', 'video', None, None, None)
+       samples = HyVideoSampler(model, hyvid_embeds, 512, 320, 85, 30, 6, 9, 6, 1, None, 1, None)
+       images = HyVideoDecode(vae, samples, True, 64, 256, True)
+       _ = VHSVideoCombine(images, 24, 0, 'HunyuanVideo', 'video/h264-mp4', False, True, None, None, None,
+                           pix_fmt = 'yuv420p', crf=19, save_metadata = True, trim_to_audio = False)
+   ```
+
+   Run the script:
+
+   ```bash
+   python run_t2v_makima_lora.py
+   ```
+
+<br/>
+
+- prompt = "kxsr, 1 lively kxsr running on campus， cinematic, anime aesthetic"
+
+
+
+
+
+https://github.com/user-attachments/assets/7573165e-9665-405d-890a-8dd3da272815
+
+
+
+<br/>
+
 ## WORK IN PROGRESS
 
 # Update
