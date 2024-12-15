@@ -122,11 +122,11 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
     ```bash
     python run_t2v.py
     ```
-<div>
+<br/>
 - prompt = "high quality nature video of a red panda balancing on a bamboo stick while a bird lands on the panda's head, there's a waterfall in the background"
 
 https://github.com/user-attachments/assets/965ded95-7143-44b6-b125-b7b088aef0d9
-</div>
+<br/>
 
 
 
