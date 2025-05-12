@@ -163,6 +163,151 @@ pip install sageattention
 comfy launch -- --listen 0.0.0.0
 ```
 
+```python 
+###### python -m comfy_script.transpile hyvideo_custom_testing_01_edit.json
+
+from comfy_script.runtime import *
+load()
+from comfy_script.runtime.nodes import *
+
+image_path = "爱可菲.webp"
+prompt = 'Realistic, High-quality. A woman is boxing with a panda, and they are at a stalemate.'
+
+with Workflow():
+    image, _ = LoadImage(image_path)
+    image, width, height = ImageResizeKJv2(image, 896, 512, 'lanczos', 'pad', '255,255,255', 'center', 16)
+    PreviewImage(image)
+    # _ = HyVideoTeaCache(0.10000000000000002, 'offload_device', 0, -1)
+    vae = HyVideoVAELoader('hunyuan_video_vae_bf16.safetensors', 'bf16', None)
+    torch_compile_args = HyVideoTorchCompileSettings('inductor', False, 'default', False, 64, True, True, False, False, False)
+    block_swap_args = HyVideoBlockSwap(20, 0, False, False)
+    model = HyVideoModelLoader('hunyuan_video_custom_720p_fp8_scaled.safetensors', 'bf16', 'fp8_scaled', 'offload_device', 'sageattn', torch_compile_args, block_swap_args, None, False, True)
+    clip = DualCLIPLoader('clip_l.safetensors', 'llava_llama3_fp8_scaled.safetensors', 'hunyuan_video', 'default')
+    clip_vision = CLIPVisionLoader('llava_llama3_vision.safetensors')
+    clip_vision_output = CLIPVisionEncode(clip_vision, image, 'center')
+    conditioning = TextEncodeHunyuanVideoImageToVideo(clip, clip_vision_output, prompt, 2)
+    conditioning2 = TextEncodeHunyuanVideoImageToVideo(clip, clip_vision_output, 'Aerial view, aerial view, overexposed, low quality, deformation, a poor composition, bad hands, bad teeth, bad eyes, bad limbs, distortion, blurring, text, subtitles, static, picture, black border.', 2)
+    hyvid_embeds = HyVideoTextEmbedBridge(conditioning, 7.500000000000002, 0, 1, False, True, conditioning2)
+    samples = HyVideoEncode(vae, image, False, 64, 256, True, 0, 1, 'sample')
+    samples = HyVideoSampler(model, hyvid_embeds, width, height, 85, 30, 0, 13.000000000000002, 2, True, None, samples, 1, None, None, None, None, 'FlowMatchDiscreteScheduler', 0, 'dynamic', None, None, None, None)
+    images = HyVideoDecode(vae, samples, True, 64, 256, True, 0, False)
+    images2 = ImageConcatMulti(2, images, image, 'left', False)
+    _ = VHSVideoCombine(images2, 24, 0, 'HunyuanVideoCustom_wrapper', 'video/h264-mp4', False, False, None, None, None)
+
+from datasets import load_dataset
+ds = load_dataset("svjack/daily-actions-locations-en-zh")
+df = ds["train"].to_pandas()
+df.to_csv("en_action.csv", index = False)
+
+vim run_akf.py
+
+import os
+import time
+import pandas as pd
+import subprocess
+from pathlib import Path
+from itertools import product
+
+# Configuration
+SEEDS = [42]
+IMAGE_PATHS = ['npl.jpg']  # Using the new image path
+OUTPUT_DIR = 'ComfyUI/temp'
+CSV_PATH = 'en_action.csv'
+PYTHON_PATH = '/environment/miniconda3/envs/system/bin/python'
+
+def get_latest_output_count():
+    """Return the number of MP4 files in the output directory"""
+    try:
+        return len(list(Path(OUTPUT_DIR).glob('*.mp4')))
+    except:
+        return 0
+
+def wait_for_new_output(initial_count):
+    """Wait until a new MP4 file appears in the output directory"""
+    timeout = 300  # Increased timeout for video generation (5 minutes)
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        current_count = get_latest_output_count()
+        if current_count > initial_count:
+            time.sleep(1)  # additional 1 second delay
+            return True
+        time.sleep(0.5)
+    return False
+
+def generate_script(image_path, seed, action):
+    """Generate the Hunyuan Video script with the given parameters"""
+    prompt = f'Realistic, High-quality. the man {action}'
+
+    script_content = f"""from comfy_script.runtime import *
+load()
+from comfy_script.runtime.nodes import *
+
+image_path = "{image_path}"
+prompt = '{prompt}'
+
+with Workflow():
+    image, _ = LoadImage(image_path)
+    image, width, height = ImageResizeKJv2(image, 896, 512, 'lanczos', 'pad', '255,255,255', 'center', 16)
+    PreviewImage(image)
+    # _ = HyVideoTeaCache(0.10000000000000002, 'offload_device', 0, -1)
+    vae = HyVideoVAELoader('hunyuan_video_vae_bf16.safetensors', 'bf16', None)
+    torch_compile_args = HyVideoTorchCompileSettings('inductor', False, 'default', False, 64, True, True, False, False, False)
+    block_swap_args = HyVideoBlockSwap(20, 0, False, False)
+    model = HyVideoModelLoader('hunyuan_video_custom_720p_fp8_scaled.safetensors', 'bf16', 'fp8_scaled', 'offload_device', 'sageattn', torch_compile_args, block_swap_args, None, False, True)
+    clip = DualCLIPLoader('clip_l.safetensors', 'llava_llama3_fp8_scaled.safetensors', 'hunyuan_video', 'default')
+    clip_vision = CLIPVisionLoader('llava_llama3_vision.safetensors')
+    clip_vision_output = CLIPVisionEncode(clip_vision, image, 'center')
+    conditioning = TextEncodeHunyuanVideoImageToVideo(clip, clip_vision_output, prompt, 2)
+    conditioning2 = TextEncodeHunyuanVideoImageToVideo(clip, clip_vision_output, 'Aerial view, aerial view, overexposed, low quality, deformation, a poor composition, bad hands, bad teeth, bad eyes, bad limbs, distortion, blurring, text, subtitles, static, picture, black border.', 2)
+    hyvid_embeds = HyVideoTextEmbedBridge(conditioning, 7.500000000000002, 0, 1, False, True, conditioning2)
+    samples = HyVideoEncode(vae, image, False, 64, 256, True, 0, 1, 'sample')
+    samples = HyVideoSampler(model, hyvid_embeds, width, height, 85, 30, 0, 13.000000000000002, 2, True, None, samples, 1, None, None, None, None, 'FlowMatchDiscreteScheduler', 0, 'dynamic', None, None, None, None)
+    images = HyVideoDecode(vae, samples, True, 64, 256, True, 0, False)
+    images2 = ImageConcatMulti(2, images, image, 'left', False)
+    _ = VHSVideoCombine(images2, 24, 0, 'HunyuanVideoCustom_wrapper', 'video/h264-mp4', False, False, None, None, None)
+"""
+    return script_content
+
+def main():
+    # Load actions from CSV
+    try:
+        actions = pd.read_csv(CSV_PATH)["en_action"].tolist()
+    except Exception as e:
+        print(f"Error loading CSV file: {e}")
+        return
+
+    # Ensure output directory exists
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # Generate all combinations of seeds and image paths
+    seed_image_combinations = list(product(SEEDS, IMAGE_PATHS))
+
+    # Main generation loop
+    for action in actions:
+        for seed, image_path in seed_image_combinations:
+            # Generate script
+            script = generate_script(image_path, seed, action)
+
+            # Write script to file
+            with open('run_hunyuan_video.py', 'w') as f:
+                f.write(script)
+
+            # Get current output count before running
+            initial_count = get_latest_output_count()
+
+            # Run the script
+            print(f"Generating video with action: {action}, seed: {seed}, image: {image_path}")
+            subprocess.run([PYTHON_PATH, 'run_hunyuan_video.py'])
+
+            # Wait for new output
+            if not wait_for_new_output(initial_count):
+                print("Timeout waiting for new output. Continuing to next generation.")
+                continue
+
+if __name__ == "__main__":
+    main()
+```
 
 # ComfyUI-HunyuanVideoWrapper - Lora Integration
 
