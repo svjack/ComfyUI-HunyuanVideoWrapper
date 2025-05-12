@@ -49,7 +49,7 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
 
    ```bash
    cd ../
-   git clone https://github.com/svjack/ComfyUI-HunyuanVideoWrapper
+   git clone https://github.com/kijai/ComfyUI-HunyuanVideoWrapper
    cd ComfyUI-HunyuanVideoWrapper
    pip install -r requirements.txt
    ```
