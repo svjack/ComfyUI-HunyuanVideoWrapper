@@ -142,6 +142,28 @@ https://github.com/user-attachments/assets/716954d9-d61f-406b-af9b-153c7bf62972
 
 <br/>
 
+### HunyuanCustom 
+```bash
+cp HunyuanVideo_comfy/hunyuan_video_custom_720p_fp8_scaled.safetensors ComfyUI/models/diffusion_models
+
+wget https://huggingface.co/Comfy-Org/HunyuanVideo_repackaged/resolve/main/split_files/clip_vision/llava_llama3_vision.safetensors
+
+cp llava_llama3_vision.safetensors ComfyUI/models/clip_vision
+
+wget https://huggingface.co/Comfy-Org/HunyuanVideo_repackaged/resolve/main/split_files/text_encoders/llava_llama3_fp8_scaled.safetensors
+
+cp llava_llama3_fp8_scaled.safetensors ComfyUI/models/clip
+
+wget https://huggingface.co/camenduru/FLUX.1-dev/resolve/main/clip_l.safetensors
+
+cp clip_l.safetensors ComfyUI/models/clip
+
+pip install sageattention
+
+comfy launch -- --listen 0.0.0.0
+```
+
+
 # ComfyUI-HunyuanVideoWrapper - Lora Integration
 
 This repository extends the functionality of **ComfyUI-HunyuanVideoWrapper** by adding support for **Lora** models, enabling the generation of high-quality video content with custom character and action LoRA models.
