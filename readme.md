@@ -309,6 +309,11 @@ if __name__ == "__main__":
     main()
 ```
 
+
+https://github.com/user-attachments/assets/391fa7c8-0c88-45a2-9c2c-fde1b4facadb
+
+
+
 # ComfyUI-HunyuanVideoWrapper - Lora Integration
 
 This repository extends the functionality of **ComfyUI-HunyuanVideoWrapper** by adding support for **Lora** models, enabling the generation of high-quality video content with custom character and action LoRA models.
