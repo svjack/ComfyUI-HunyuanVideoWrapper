@@ -144,6 +144,13 @@ https://github.com/user-attachments/assets/716954d9-d61f-406b-af9b-153c7bf62972
 
 ### HunyuanCustom 
 ```bash
+huggingface-cli download --resume-download Kijai/HunyuanVideo_comfy hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors --local-dir ComfyUI/models/diffusion_models --local-dir-use-symlinks False
+
+huggingface-cli download --resume-download Kijai/HunyuanVideo_comfy hunyuan_video_vae_bf16.safetensors --local-dir ComfyUI/models/vae --local-dir-use-symlinks False
+
+huggingface-cli download --resume-download Kijai/HunyuanVideo_comfy hunyuan_video_custom_720p_fp8_scaled.safetensors --local-dir ComfyUI/models/diffusion_models --local-dir-use-symlinks False
+
+
 cp HunyuanVideo_comfy/hunyuan_video_custom_720p_fp8_scaled.safetensors ComfyUI/models/diffusion_models
 
 wget https://huggingface.co/Comfy-Org/HunyuanVideo_repackaged/resolve/main/split_files/clip_vision/llava_llama3_vision.safetensors
