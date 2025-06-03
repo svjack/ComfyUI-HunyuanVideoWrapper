@@ -31,6 +31,8 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
 2. **Initialize ComfyUI:**
 
    ```bash
+   wget https://files.pythonhosted.org/packages/30/e8/a390dd2e83f468327b944bacc5cd2e787e0151f690fec9682a78130a488f/comfyui_frontend_package-1.21.6-py3-none-any.whl
+   pip install comfyui_frontend_package-1.21.6-py3-none-any.whl
    comfy --here install
    ```
 
