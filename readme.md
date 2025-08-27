@@ -35,6 +35,7 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
    wget https://files.pythonhosted.org/packages/6f/41/23e60b0dac42da9a6a264a1a9a82046283aeddbe522717c14be4e85421fd/comfyui_frontend_package-1.21.7-py3-none-any.whl
    pip install comfyui_frontend_package-1.21.7-py3-none-any.whl
    comfy --here install
+   comfy --here update
    ```
 
 3. **Clone and Install ComfyScript:**
