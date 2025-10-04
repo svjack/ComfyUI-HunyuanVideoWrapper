@@ -41,7 +41,9 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
    ```
 
 3. **Clone and Install ComfyScript:**
-
+   - 由于 comfyui 从 0.3.60 开始大范围替换 schema 为v3 导致使用 ComfyScript 会出现节点 输入输出定义的 conflict 问题
+   - 要想正常使用需要退回版本到 comfyui 0.3.59
+   - https://github.com/Chaoses-Ib/ComfyScript/commit/a54e894e4d33b899f3663e6f12bba71c7241411a
    ```bash
    cd ComfyUI/custom_nodes
    git clone https://github.com/Chaoses-Ib/ComfyScript.git
@@ -51,7 +53,7 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
    pip install -U aiohttp
    ```
 
-4. **Clone and Install ComfyUI-HunyuanVideoWrapper:**
+5. **Clone and Install ComfyUI-HunyuanVideoWrapper:**
 
    ```bash
    cd ../
@@ -60,7 +62,7 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
    pip install -r requirements.txt
    ```
 
-5. **Load ComfyScript Runtime:**
+6. **Load ComfyScript Runtime:**
 
    ```python
    from comfy_script.runtime import *
@@ -68,27 +70,27 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
    from comfy_script.runtime.nodes import *
    ```
 
-6. **Install Example Dependencies:**
+7. **Install Example Dependencies:**
 
    ```bash
    cd examples
    comfy node install-deps --workflow=hyvideo_t2v_example_01.json
    ```
 
-7. **Update ComfyUI Dependencies:**
+8. **Update ComfyUI Dependencies:**
 
    ```bash
    cd ../../ComfyUI
    pip install --upgrade torch torchvision torchaudio -r requirements.txt
    ```
 
-8. **Transpile Example Workflow:**
+9. **Transpile Example Workflow:**
 
    ```bash
    python -m comfy_script.transpile hyvideo_t2v_example_01.json
    ```
 
-9. **Download and Place Model Files:**
+10. **Download and Place Model Files:**
 
    Download the required model files from Hugging Face:
 
@@ -104,7 +106,7 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
    cp HunyuanVideo_comfy/hunyuan_video_vae_bf16.safetensors ComfyUI/models/vae
    ```
 
-10. **Run the Example Script:**
+11. **Run the Example Script:**
 
     Create a Python script `run_t2v.py`:
 
