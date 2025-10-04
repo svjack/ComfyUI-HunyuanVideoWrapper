@@ -52,6 +52,10 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
    pip uninstall aiohttp
    pip install -U aiohttp
    ```
+   - replace by
+   ```bash
+   comfy run --workflow video_wan2_2_14B_fun_camera_api_2.json --wait
+   ```
 
 5. **Clone and Install ComfyUI-HunyuanVideoWrapper:**
 
