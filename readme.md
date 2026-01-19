@@ -36,6 +36,7 @@ sudo apt-get update && sudo apt-get install git-lfs cbm ffmpeg
    pip install comfyui_frontend_package-1.21.7-py3-none-any.whl
    pip uninstall questionary
    pip install "questionary<2.1.0"
+   pip install --upgrade typer
    comfy --here install
    comfy --here update
    ```
