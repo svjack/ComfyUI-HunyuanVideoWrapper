@@ -180,6 +180,7 @@ cp clip_l.safetensors ComfyUI/models/clip
 
 pip install sageattention
 
+export HF_ENDPOINT=https://hf-mirror.com
 comfy launch -- --listen 0.0.0.0
 ```
 
